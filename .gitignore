@@ -62,6 +62,8 @@ venv/
 .venv/
 conda-env/
 
+data/
+
 # Checkpoints / outputs
 runs/              # e.g. TensorBoard logs
 wandb/             # Weights & Biases logs
