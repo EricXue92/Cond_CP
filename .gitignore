@@ -1,0 +1,71 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Python packaging
+*.egg
+.eggs/
+pip-wheel-metadata/
+__pycache__/
+*.py[cod]
+*.so
+
+# IDE / Editors
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+# Logs & temp
+*.log
+*.out
+*.err
+nohup.out
+
+# Data / models (large files, ML experiments)
+*.pt
+*.pth
+*.ckpt
+*.npy
+*.npz
+*.csv
+*.tsv
+*.gz
+*.zip
+*.tar
+*.tar.gz
+*.h5
+*.pickle
+*.pkl
+*.joblib
+
+# Figures / plots (optional — keep only if reproducible)
+*.png
+*.jpg
+*.jpeg
+*.tiff
+*.svg
+*.pdf
+
+# Conda / environments
+*.conda
+*.lock
+env/
+venv/
+.venv/
+conda-env/
+
+# Checkpoints / outputs
+runs/              # e.g. TensorBoard logs
+wandb/             # Weights & Biases logs
+mlruns/            # MLflow logs
+output/
+outputs/
+results/
