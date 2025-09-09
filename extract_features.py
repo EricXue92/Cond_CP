@@ -25,10 +25,8 @@ def extract_rxrx_features(dataset, featurizer, classifier, batch_size=128, devic
             features_list.append(features.detach().cpu())
             logits_list.append(logits.detach().cpu())
             labels_list.append(labels.detach().cpu())
-
             print(f"Processed batch with {images.size(0)} samples.")
 
-        # Combine results
         combined_features = torch.cat(features_list, dim=0)
         combined_logits = torch.cat(logits_list, dim=0)
         combined_labels = torch.cat(labels_list, dim=0)
@@ -43,16 +41,19 @@ def save_rxrx_features(features, logits, y,  path='data/rxrx1_v1.0/rxrx1_feature
     if os.path.exists(path):
         print(f"File already exists: {path}")
         return
-    else:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        print("Saving features to:", path)
-        torch.save({"features": features, "y": y, "logits": logits}, path)
-        print("Features saved successfully.")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    print("Saving features to:", path)
+    torch.save({"features": features, "y": y, "logits": logits}, path)
+    print("Features saved successfully.")
 
-def load_rxrx_features(filepath, device="cpu"):
+def load_rxrx_features(filepath, device=None):
     if not os.path.isfile(filepath):
         raise FileNotFoundError(f"Features file not found: {filepath}")
-    data = torch.load(filepath, map_location="cpu")
+
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    data = torch.load(filepath, map_location=device)
     features = data["features"].to(device)
     logits = data["logits"].to(device)
     y = data["y"].to(device)
@@ -61,13 +62,14 @@ def load_rxrx_features(filepath, device="cpu"):
 
 if __name__ == "__main__":
     # Load test data and metadata
-    test_images, metadata = load_rxrx1_test_data()
+    test_images, test_metadata = load_rxrx1_test_data()
 
     model, featurizer, classifier = create_rxrx1_model()
+
     filepath = 'data/rxrx1_v1.0/rxrx1_features.pt'
     if not os.path.exists(filepath):
         print("Extracting features...")
-        features, logits, y= extract_rxrx_features(test_images, featurizer, classifier, batch_size=1024)
+        features, logits, y = extract_rxrx_features(test_images, featurizer, classifier, batch_size=1024)
         print("Saving features (torch) ...")
         save_rxrx_features(features, logits, y, filepath)
     else:

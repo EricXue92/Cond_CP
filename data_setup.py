@@ -19,7 +19,6 @@ def load_rxrx1_test_data(seed=1):
     transform = create_rxrx1_transform()
     dataset = get_dataset(dataset="rxrx1", download=False)
     test_data = dataset.get_subset("test", transform=transform)
-
     metadata = pd.read_csv('data/rxrx1_v1.0/metadata.csv')
     test_metadata = metadata[metadata['dataset'] == 'test']
     print("Got test dataset with size:", len(test_data))

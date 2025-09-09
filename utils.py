@@ -7,9 +7,10 @@ from tqdm import tqdm
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-import joblib
 import os
-import math
+import math, random # for seed setting
+import json
+from pathlib import Path
 
 def create_train_calib_test_split(n_samples, train_ratio=0.25, calib_ratio=0.25):
     indices = np.arange(n_samples)
@@ -51,13 +52,6 @@ def encode_labels(data, col="experiment"):
         arr[arr == val] = i
     return arr.astype(int)
 
-# Cvalues, losses = find_best_regularization(features[train_idx,:],
-#                                            experiment[train_idx], C_range=(0.001, 0.1), n_values=20, cv_folds=5)
-#
-# finalFeaturesCal, finalFeaturesTest = computeFeatures(features[train_idx,:],
-#                                                     features[calib_idx,:], features[test_idx,:], experiment[train_idx], Cvalues, losses )
-
-
 def build_cov_df(coverages_split, coverages_cond, subgrouping, group_name):
     """
     Build a tidy DataFrame of (overall + per-subgroup) coverages for two methods.
@@ -69,19 +63,28 @@ def build_cov_df(coverages_split, coverages_cond, subgrouping, group_name):
         'SampleSize': [len(coverages_split), len(coverages_cond)]
     })
 
+    subgrouping = pd.Series(subgrouping).reset_index(drop=True)
+    mapping = {g: i + 1 for i, g in enumerate(np.unique(subgrouping))}
+
     for g in np.unique(subgrouping):
-        msk = (subgrouping == g)
+        msk = (subgrouping == g).to_numpy()
+        gid = mapping[g]
+
         new_df = pd.DataFrame({
-            group_name: [int(g) + 1, int(g) + 1],  # shift to 1-based labels for readability
+            group_name: [gid, gid],
             'Type': ['Split Conformal', 'Conditional Calibration'],
             'Coverage': [np.mean(coverages_split[msk]), np.mean(coverages_cond[msk])],
-            'SampleSize': [msk.sum(), msk.sum()]
+            'SampleSize': [int(msk.sum()), int(msk.sum())]
         })
         cov_df = pd.concat([cov_df, new_df], ignore_index=True)
-
     # Add 95% CI margin of error
-    cov_df['error'] = 1.96 * np.sqrt(cov_df['Coverage'] * (1 - cov_df['Coverage']) / cov_df['SampleSize'])
-
+    cov_df['error'] = np.where(
+        cov_df['SampleSize'] > 0,
+        1.96 * np.sqrt(cov_df['Coverage'] * (1 - cov_df['Coverage']) / cov_df['SampleSize']),
+        np.nan
+    )
+    # cov_df['lower'] = cov_df['Coverage'] - cov_df['error']
+    # cov_df['upper'] = cov_df['Coverage'] + cov_df['error']
     return cov_df
 
 def split_threshold(scores_cal, alpha):
@@ -131,6 +134,7 @@ def plot_miscoverage(cells_file='cells.csv', experiments_file='experiments.csv',
     f2 = sns.barplot(data=covDfExperiments, x='Experiment', y='Miscoverage', hue='Type', ax=ax2)
     ax2.axhline(target_miscoverage, color='red')
     add_error_bars(f2, covDfExperiments)
+
     ax2.tick_params(axis='x', labelsize=x_label_fontsize)  # Smaller font size for x-axis
     ax2.legend(title='', loc='upper center')
     plt.tight_layout()
@@ -151,7 +155,6 @@ def add_error_bars(barplot_obj, dataframe):
         error_val = dataframe.iloc[i]['error'] if i < len(dataframe) else 0
         barplot_obj.errorbar(x=[x_coord], y=[y_coord], yerr=[error_val], fmt="none", c="k")
 
-
 def save_or_append_csv(df, filename):
     if os.path.exists(filename):
         df.to_csv(filename, mode='a', header=False, index=False)
@@ -161,70 +164,114 @@ def save_or_append_csv(df, filename):
         print(f"New file {filename} created")
 
 # # Use cross validation to select regularization parameter
-def find_best_regularization(X, y, c_range=(0.001, 0.1), n_values=500, cv_folds=5): # 20, 5
-    X = X.detach().cpu().numpy() if hasattr(X, 'detach') else np.asarray(X)
-    y = np.asarray(y)
+# def find_best_regularization(X, y, c_range=(0.001, 0.1), n_values=500, cv_folds=5): # 20, 5
+#     X = X.detach().cpu().numpy() if hasattr(X, 'detach') else np.asarray(X)
+#     y = np.asarray(y)
+#
+#     c_values = np.linspace(c_range[0], c_range[1], n_values)
+#     cv_scores = []
+#     for c in tqdm(c_values, desc="Testing regularization values"):
+#         model = LogisticRegression(C=c, max_iter=500, random_state=42) # 5000
+#         scores = cross_val_score(model, X, y, cv=cv_folds, scoring='neg_log_loss')
+#         cv_scores.append(-scores.mean())
+#     return c_values, np.array(cv_scores)
 
-    c_values = np.linspace(c_range[0], c_range[1], n_values)
-    cv_scores = []
-    for c in tqdm(c_values, desc="Testing regularization values"):
-        model = LogisticRegression(C=c, max_iter=500, random_state=42) # 5000
-        scores = cross_val_score(model, X, y, cv=cv_folds, scoring='neg_log_loss')
-        cv_scores.append(-scores.mean())
-    return c_values, np.array(cv_scores)
 
+def find_best_regularization(X, y, c_range=(1e-4, 1e+2), n_values=12, cv_folds=5,
+    scoring="neg_log_loss",  solver="saga",  max_iter=2000, tol=1e-3, n_jobs=-1, class_weight=None, verbose=1):
 
-def tune_logreg_c(
-    X, y,
-    c_range=(1e-4, 1e+2),     # search on log scale
-    n_values=12,
-    cv_folds=5,
-    scoring="neg_log_loss",   # same metric as your original code
-    solver="saga",           # try "liblinear" (small data) or "saga" (high-dim/sparse)
-    max_iter=2000,
-    tol=1e-3,
-    n_jobs=-1,
-    class_weight=None,        # e.g., "balanced"
-    verbose=1,
-):
-    # to numpy (handles torch tensors too)
     x_np = X.detach().cpu().numpy() if hasattr(X, "detach") else np.asarray(X)
     y_np = np.asarray(y)
-
     cs = np.logspace(np.log10(c_range[0]), np.log10(c_range[1]), n_values)
 
-    est = LogisticRegression(
-        penalty="l2",
-        solver=solver,
-        max_iter=max_iter,
-        tol=tol,
-        random_state=42,
-        class_weight=class_weight,
-    )
+    est = LogisticRegression( penalty="l2",  solver=solver, max_iter=max_iter,
+        tol=tol, random_state=42,  class_weight=class_weight )
 
     cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
-    gs = GridSearchCV(
-        estimator=est,
-        param_grid={"C": cs},
-        scoring=scoring,
-        cv=cv,
-        n_jobs=n_jobs,          # parallel across folds *and* cs
-        refit=True,             # keep the best model fitted
-        verbose=verbose,
-        return_train_score=False,
-        pre_dispatch="2*n_jobs" # helps memory on big runs
-    )
+
+    gs = GridSearchCV(estimator=est, param_grid={"C": cs}, scoring=scoring, cv=cv,
+        n_jobs=n_jobs, refit=True,  verbose=verbose, return_train_score=False,
+        pre_dispatch="2*n_jobs")
 
     gs.fit(x_np, y_np)
 
-    # Align results back to our Cs
     tested = gs.cv_results_["param_C"].data.astype(float)
-    mean_loss = -gs.cv_results_["mean_test_score"]  # negate because neg_log_loss
+    mean_loss = -gs.cv_results_["mean_test_score"]
     loss_map = dict(zip(tested, mean_loss))
     losses = np.array([loss_map[c] for c in cs])
 
     best_C = gs.best_params_["C"]
     best_loss = -gs.best_score_
     best_model = gs.best_estimator_
-
     return best_C
+
+def one_hot_encode(labels):
+    labels = np.asarray(labels, dtype=int)
+    K = int(labels.max()) + 1 if labels.size else 0
+    return np.eye(K, dtype=float)[labels] # shape (n, K)
+
+def set_seed(seed, enforce_determinism=True):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    if enforce_determinism:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        try:
+            torch.use_deterministic_algorithms(True)
+        except Exception:
+            pass
+    return seed
+
+
+
+def save_prediction_sets_wide(results, filepath):
+    """
+    Save classification_prediction_sets(...) output in WIDE format:
+      one row per test point with Split_* and Cond_* columns side-by-side.
+    Appends to file if it already exists, otherwise creates a new file.
+    """
+    n_test = len(results['split']['labels'])
+
+    # Thresholds
+    t_split = results['thresholds']['split']
+    t_cond  = results['thresholds']['cond']
+
+    rows = []
+    for i in range(n_test):
+        split_set = list(results['split']['sets'][i])
+        cond_set  = list(results['cond']['sets'][i])
+
+        row = {
+            "Index": i,
+            "Split_Label": results['split']['labels'][i],
+            "Split_Set": json.dumps(split_set),
+            "Split_Size": len(split_set),
+            "Split_Threshold": float(t_split) if np.isscalar(t_split) else str(t_split),
+
+            "Cond_Label": results['cond']['labels'][i],
+            "Cond_Set": json.dumps(cond_set),
+            "Cond_Size": len(cond_set),
+        }
+
+        if isinstance(t_cond, (list, np.ndarray)) and not np.isscalar(t_cond):
+            row["Cond_Threshold"] = float(t_cond[i])
+        else:
+            row["Cond_Threshold"] = float(t_cond) if np.isscalar(t_cond) else str(t_cond)
+
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+
+    # Check file existence
+    path = Path(filepath)
+    if path.exists():
+        print(f" File exists: {filepath}. Appending rows...")
+        df.to_csv(path, mode="a", header=False, index=False)
+    else:
+        print(f" Saving new file: {filepath}")
+        df.to_csv(path, index=False)
+
+    return df

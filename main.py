@@ -1,24 +1,35 @@
+from tornado.http1connection import parse_hex_int
+import torch
+
 from utils import (computeFeatures, find_best_regularization,
                    create_train_calib_test_split, encode_labels, build_cov_df,
-                   plot_miscoverage, encode_columns, save_or_append_csv, tune_logreg_c)
+                   plot_miscoverage, encode_columns, save_or_append_csv, one_hot_encode,set_seed)
+
 from extract_features import load_rxrx_features
 from conformal_scores import compute_conformity_scores
 import os
 import pandas as pd
-from conditional_coverage import compute_both_coverages, split_threshold, prediction_sets_form_probs, conditional_thresholds
+from conditional_coverage import  split_threshold, prediction_sets_form_probs, conditional_thresholds, compute_both_coverages
 import numpy as np
+import argparse
 
+set_seed(42)
 
-def main():
+def main(args):
+
+    # Load features
     filepath = 'data/rxrx1_v1.0/rxrx1_features.pt'  # labels: sirna
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Features file not found: {filepath}")
-    else:
-        features, logits, y= load_rxrx_features(filepath)
-        print(f"Feature loaded from: {filepath}")
+    features, logits, y= load_rxrx_features(filepath)
 
+    # Load metadata
     metadata = pd.read_csv('data/rxrx1_v1.0/metadata.csv')
     metadata = metadata[metadata['dataset'] == 'test']
+
+    assert len(metadata) == len(features), "Features and metadata size mismatch"
+    assert len(metadata) == len(logits), "metadata and logits size mismatch"
+    assert len(metadata) == len(y), "metadata and y size mismatch"
 
     train_idx, calib_idx, test_idx = create_train_calib_test_split(len(features))
 
@@ -26,55 +37,46 @@ def main():
     cal_scores, test_scores = compute_conformity_scores(logits[calib_idx, :], logits[test_idx, :],
                                                         y[calib_idx], y[test_idx])
 
-
-
     # build new labels for logistic regression [0,1,2..,13]
     experiment = encode_labels(metadata, "experiment")
-    print(f"Created new labels for LogisticRegression: {experiment}")
+    exp_train_y = experiment[train_idx].astype(int)
+    exp_cal_y = experiment[calib_idx].astype(int)
+    exp_test_y = experiment[test_idx].astype(int)
 
-    # c_values, losses = find_best_regularization(features[train_idx,:],
-    #                                            experiment[train_idx], c_range=(0.001, 0.1), n_values=20, cv_folds=5)
+    # Deign matrices Φ_cal, Φ_test
+    if not args.group_flag:
+        train_feature = features[train_idx, :]
+        calib_feature = features[calib_idx, :]
+        test_feature = features[test_idx, :]
 
-    best_c = tune_logreg_c(features[train_idx, :], experiment[train_idx])
+        best_c = find_best_regularization(train_feature, exp_train_y)  
+        phi_cal, phi_test = computeFeatures(train_feature,
+                                           calib_feature, test_feature,
+                                           exp_train_y, best_c)
+    elif args.group_flag:
+        # HARD: Φ = one-hot(experiment)
+        phi_cal = one_hot_encode(exp_cal_y)
+        phi_test = one_hot_encode(exp_test_y)
 
-    # final_features_cal: (, 14) , final_features_test : (, 14)
+        if args.add_celltype:
+            ct_codes = pd.factorize(metadata["cell_type"])[0] # encode cell types as 0,1,2,...
+            phi_cal = np.hstack((phi_cal, one_hot_encode(ct_codes[calib_idx])))
+            phi_test = np.hstack([phi_test, one_hot_encode(ct_codes[test_idx])])
 
-    # group indicators but smooth: instead of hard one-hots by experiment, you get soft membership,
-    # which is stabler and lets thresholds adapt when a point is ambiguous between experiments.
+    else:
+        raise ValueError("group_flag must be either True or False")
 
-    final_features_cal, final_features_test = computeFeatures(features[train_idx, :],
-                                                          features[calib_idx, :], features[test_idx, :],
-                                                          experiment[train_idx], best_c)
-
-    #
-    exp_train = experiment[train_idx].astype(int)
-    exp_cal = experiment[calib_idx].astype(int)
-    exp_test = experiment[test_idx].astype(int)
-
-    K = int( max(exp_cal.max(), exp_test.max()) )+ 1
-    PhiCal_hard = np.eye(K)[exp_cal]
-    PhiTest_hard = np.eye(K)[exp_test]
-
-    # add cell_type one-hots to Φ(x)
-    labels_ct = pd.factorize(metadata["cell_type"])[0] # encode cell types as 0,1,2,...
-    print(f"Cell type labels (encoded): {labels_ct}")
-    onehot_ct_cal = np.eye(labels_ct.max()+1)[labels_ct[calib_idx]]
-    oenhot_ct_test = np.eye(labels_ct.max()+1)[labels_ct[test_idx]]
-    # Concatenate with existing features Φ from experiment probabilities
-    phi_cal = np.hstack([final_features_cal, onehot_ct_cal])
-    phi_test = np.hstack([final_features_test, oenhot_ct_test])
+    assert phi_cal.shape[0] == len(cal_scores), "Φ_cal rows must match cal_scores length"
+    assert phi_test.shape[0] == len(test_scores), "Φ_test rows must match test_scores length"
+    assert phi_cal.shape[1] == phi_test.shape[1], "Φ dims must match between calib and test"
 
 
+    # --- Compute coverages with your finite-basis engine ---
+    coverages_split, coverages_cond = compute_both_coverages(
+        phi_cal, cal_scores, phi_test, test_scores, alpha=args.alpha
+    )
 
 
-
-
-    coverages_split, coverages_cond = compute_both_coverages(final_features_cal, cal_scores, final_features_test, test_scores,
-                                                     alpha=0.1)
-
-    metadata, mappings = encode_columns(metadata, ["cell_type", "experiment"])
-
-    # Encode your metadata columns earlier if needed, then:
     df_cov_cells = build_cov_df(coverages_split, coverages_cond, metadata['cell_type'].iloc[test_idx], group_name='Cell Type')
     df_cov_experiments = build_cov_df(coverages_split, coverages_cond, metadata['experiment'].iloc[test_idx],
                                     group_name='Experiment')
@@ -84,5 +86,74 @@ def main():
 
     plot_miscoverage(save_name="Experiment_Cell_Miscoverage.pdf")
 
+    return
+
+
+
+    # # --- Build Φ_cal, Φ_test ---
+    # if not group_flag:
+    #     # SOFT: final_features_cal: (, 14) , final_features_test : (, 14)
+    #     best_c = find_best_regularization(train_feature, train_y)
+    #     final_features_cal, final_features_test = computeFeatures(train_feature,
+    #                                                           calib_feature, test_feature,
+    #                                                           train_y, best_c)
+    # elif group_flag:
+    #     # HARD: final_features_cal: (, 14) , final_features_test : (, 14)
+    #     exp_train = experiment[train_idx].astype(int)
+    #     exp_cal = experiment[calib_idx].astype(int)
+    #     exp_test = experiment[test_idx].astype(int)
+    #
+    #     K = int( max(exp_cal.max(), exp_test.max()) )+ 1
+    #     PhiCal_hard = np.eye(K)[exp_cal]
+    #     PhiTest_hard = np.eye(K)[exp_test]
+    #
+    #     # add cell_type one-hots to Φ(x)
+    #     labels_ct = pd.factorize(metadata["cell_type"])[0] # encode cell types as 0,1,2,...
+    #     print(f"Cell type labels (encoded): {labels_ct}")
+    #
+    #     onehot_ct_cal = np.eye(labels_ct.max()+1)[labels_ct[calib_idx]]
+    #     oenhot_ct_test = np.eye(labels_ct.max()+1)[labels_ct[test_idx]]
+    #
+    #     # Concatenate with existing features Φ from experiment probabilities
+    #     phi_cal = np.hstack([final_features_cal, onehot_ct_cal])
+    #     phi_test = np.hstack([final_features_test, oenhot_ct_test])
+    #
+    # else:
+    #     raise ValueError("group_flag must be either True or False")
+    #
+    #
+    # coverages_split, coverages_cond = compute_both_coverages(final_features_cal, cal_scores, final_features_test, test_scores,
+    #                                                  alpha=0.1)
+    #
+    # metadata, mappings = encode_columns(metadata, ["cell_type", "experiment"])
+    #
+    # # Encode your metadata columns earlier if needed, then:
+    # df_cov_cells = build_cov_df(coverages_split, coverages_cond, metadata['cell_type'].iloc[test_idx], group_name='Cell Type')
+    # df_cov_experiments = build_cov_df(coverages_split, coverages_cond, metadata['experiment'].iloc[test_idx],
+    #                                 group_name='Experiment')
+    #
+    # save_or_append_csv(df_cov_cells, "cells.csv")
+    # save_or_append_csv(df_cov_experiments, "experiments.csv")
+    #
+    # plot_miscoverage(save_name="Experiment_Cell_Miscoverage.pdf")
+
+def parse_arguments():
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--alpha", type=float, default=0.1, help="Miscoverage level")
+    parser.add_argument("--group_flag", action="store_true", help="Use group_flag")
+    parser.add_argument("--soft_flag", action="store_true", help="Use soft_flag")
+    parser.add_argument("--add_celltype", action="store_true",
+                        help="Add cell type one-hots to features")
+    args = parser.parse_args()
+    if sum([args.soft_flag, args.group_flag]) != 1:
+        parser.error("Exactly one of group or soft must be set.")
+    print("runing with args:", args)
+    return args
+
+
 if __name__ == "__main__":
-    main()
+    args = parse_arguments()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    main(args)

@@ -826,7 +826,7 @@ def setup_cvx_problem_calib(
             eta.T @ Phi == 0
         ]
         prob = cp.Problem(
-            cp.Minimize(-1 * cp.sum(cp.multiply(eta, cp.vec(scores)))),
+            cp.Minimize(-1 * cp.sum(cp.multiply(eta, cp.vec(scores, order="F")))),
             constraints
         )
     else: # RKHS fitting
@@ -841,7 +841,7 @@ def setup_cvx_problem_calib(
              quantile >= eta,
             eta.T @ Phi == 0]
         prob = cp.Problem(
-                    cp.Minimize(0.5 * C * cp.sum_squares(L.T @ eta) - cp.sum(cp.multiply(eta, cp.vec(scores)))),
+                    cp.Minimize(0.5 * C * cp.sum_squares(L.T @ eta) - cp.sum(cp.multiply(eta, cp.vec(scores, order="F")))),
                     constraints
                 )
     return prob
