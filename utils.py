@@ -11,6 +11,10 @@ import os
 import math, random # for seed setting
 import json
 from pathlib import Path
+from datetime import datetime
+import seaborn as sns
+
+
 
 def create_train_calib_test_split(n_samples, train_ratio=0.25, calib_ratio=0.25):
     indices = np.arange(n_samples)
@@ -32,7 +36,7 @@ def computeFeatures(x_train, x_cal, x_test, y_train, best_c):
     x_test = x_test.detach().cpu().numpy()
     y_train = np.asarray(y_train)
 
-    model = LogisticRegression(C=best_c, max_iter=500)  # 5000
+    model = LogisticRegression(C=best_c, max_iter=5000)  # 5000
     reg = model.fit(x_train, y_train)
     features_cal = reg.predict_proba(x_cal)  # Shape: (n_cal, 14): probabilities for each of 14 classes
     features_test = reg.predict_proba(x_test)  # shape: (n_test, 14): probabilities for each of 14 classes
@@ -77,14 +81,7 @@ def build_cov_df(coverages_split, coverages_cond, subgrouping, group_name):
             'SampleSize': [int(msk.sum()), int(msk.sum())]
         })
         cov_df = pd.concat([cov_df, new_df], ignore_index=True)
-    # Add 95% CI margin of error
-    cov_df['error'] = np.where(
-        cov_df['SampleSize'] > 0,
-        1.96 * np.sqrt(cov_df['Coverage'] * (1 - cov_df['Coverage']) / cov_df['SampleSize']),
-        np.nan
-    )
-    # cov_df['lower'] = cov_df['Coverage'] - cov_df['error']
-    # cov_df['upper'] = cov_df['Coverage'] + cov_df['error']
+    cov_df['error'] = 1.96 * np.sqrt(cov_df['Coverage'] * (1 - cov_df['Coverage']) / cov_df['SampleSize'])
     return cov_df
 
 def split_threshold(scores_cal, alpha):
@@ -103,9 +100,9 @@ def encode_columns(df, cols):
     return df_encoded, mappings
 
 
-def plot_miscoverage(cells_file='cells.csv', experiments_file='experiments.csv',
+def plot_miscoverage(cells_file='results/cells.csv', experiments_file='results/experiments.csv',
                      figsize=(20.7, 8.27), font_scale=2, target_miscoverage=0.1,
-                     x_label_fontsize=14, show_plot=True, save_dir="Figures", save_name="Experiment_Cell_Miscoverage.pdf"):
+                     x_label_fontsize=14, show_plot=True, save_dir="Figures", save_name="Experiment_Cell_Miscoverage"):
     covDfCells = pd.read_csv(cells_file)
     covDfExperiments = pd.read_csv(experiments_file)
 
@@ -140,42 +137,36 @@ def plot_miscoverage(cells_file='cells.csv', experiments_file='experiments.csv',
     plt.tight_layout()
 
     os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, save_name)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamped_name = f"{save_name}_{timestamp}.pdf"
+    save_path = os.path.join(save_dir, timestamped_name)
+
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
-    print(f"Plot saved to {save_path}")
+    print(f"[INFO] Plot saved as PDF: {save_path}")
     if show_plot:
         plt.show()
     return fig, (ax1, ax2)
 
 
-def add_error_bars(barplot_obj, dataframe):
+def add_error_bars(barplot_obj, dataframe, err_col="error"):
+    ax = barplot_obj.axes
     for i, patch in enumerate(barplot_obj.patches):
         x_coord = patch.get_x() + 0.5 * patch.get_width()
         y_coord = patch.get_height()
-        error_val = dataframe.iloc[i]['error'] if i < len(dataframe) else 0
-        barplot_obj.errorbar(x=[x_coord], y=[y_coord], yerr=[error_val], fmt="none", c="k")
+        error_val = dataframe.iloc[i][err_col] if i < len(dataframe) else 0.0
+        ax.errorbar(x=x_coord, y=y_coord, yerr=error_val,
+                    fmt="none", c="k", capsize=3, elinewidth=1)
 
-def save_or_append_csv(df, filename):
-    if os.path.exists(filename):
-        df.to_csv(filename, mode='a', header=False, index=False)
-        print(f"Data appended to {filename}")
-    else:
-        df.to_csv(filename, index=False)
-        print(f"New file {filename} created")
 
-# # Use cross validation to select regularization parameter
-# def find_best_regularization(X, y, c_range=(0.001, 0.1), n_values=500, cv_folds=5): # 20, 5
-#     X = X.detach().cpu().numpy() if hasattr(X, 'detach') else np.asarray(X)
-#     y = np.asarray(y)
-#
-#     c_values = np.linspace(c_range[0], c_range[1], n_values)
-#     cv_scores = []
-#     for c in tqdm(c_values, desc="Testing regularization values"):
-#         model = LogisticRegression(C=c, max_iter=500, random_state=42) # 5000
-#         scores = cross_val_score(model, X, y, cv=cv_folds, scoring='neg_log_loss')
-#         cv_scores.append(-scores.mean())
-#     return c_values, np.array(cv_scores)
 
+def save_or_append_csv(df, filename, save_dir="results"):
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    name = f"{filename}_{timestamp}.csv"
+    save_path = os.path.join(save_dir, name)
+    df.to_csv(save_path, index=False)
+    print(f"[INFO] Saved: {save_path}")
+    return
 
 def find_best_regularization(X, y, c_range=(1e-4, 1e+2), n_values=12, cv_folds=5,
     scoring="neg_log_loss",  solver="saga",  max_iter=2000, tol=1e-3, n_jobs=-1, class_weight=None, verbose=1):
@@ -225,17 +216,18 @@ def set_seed(seed, enforce_determinism=True):
             pass
     return seed
 
+def save_prediction_sets(results, filepath=None, outdir="results"):
 
+    # Ensure parent directory exists
+    Path(outdir).mkdir(parents=True, exist_ok=True)
 
-def save_prediction_sets_wide(results, filepath):
-    """
-    Save classification_prediction_sets(...) output in WIDE format:
-      one row per test point with Split_* and Cond_* columns side-by-side.
-    Appends to file if it already exists, otherwise creates a new file.
-    """
+    if filepath is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = os.path.join(outdir, f"prediction_sets_{timestamp}.csv")
+    else:
+        filepath = Path(filepath)
+
     n_test = len(results['split']['labels'])
-
-    # Thresholds
     t_split = results['thresholds']['split']
     t_cond  = results['thresholds']['cond']
 
@@ -246,13 +238,13 @@ def save_prediction_sets_wide(results, filepath):
 
         row = {
             "Index": i,
-            "Split_Label": results['split']['labels'][i],
-            "Split_Set": json.dumps(split_set),
+            "Split_Label": int(results['split']['labels'][i]),
+            "Split_Set": json.dumps([int(x) for x in split_set]),
             "Split_Size": len(split_set),
             "Split_Threshold": float(t_split) if np.isscalar(t_split) else str(t_split),
 
-            "Cond_Label": results['cond']['labels'][i],
-            "Cond_Set": json.dumps(cond_set),
+            "Cond_Label": int(results['cond']['labels'][i]),
+            "Cond_Set": json.dumps([int(x) for x in cond_set]),
             "Cond_Size": len(cond_set),
         }
 
@@ -264,14 +256,39 @@ def save_prediction_sets_wide(results, filepath):
         rows.append(row)
 
     df = pd.DataFrame(rows)
-
-    # Check file existence
-    path = Path(filepath)
-    if path.exists():
-        print(f" File exists: {filepath}. Appending rows...")
-        df.to_csv(path, mode="a", header=False, index=False)
-    else:
-        print(f" Saving new file: {filepath}")
-        df.to_csv(path, index=False)
-
+    df.to_csv(filepath, index=False)
+    print(f"Saved prediction sets to {filepath}")
     return df
+
+def plot_size_hist_comparison(csv_file, figsize=(8, 6), save_path=None):
+    df = pd.read_csv(csv_file)
+    # Count frequencies for each size
+    split_counts = df["Split_Size"].value_counts().sort_index()
+    cond_counts = df["Cond_Size"].value_counts().sort_index()
+    # Ensure both indices cover the same range
+    all_sizes = sorted(set(split_counts.index).union(set(cond_counts.index)))
+    split_counts = split_counts.reindex(all_sizes, fill_value=0)
+    cond_counts = cond_counts.reindex(all_sizes, fill_value=0)
+    # Plot side-by-side bars
+    x = range(len(all_sizes))
+    width = 0.4
+    plt.figure(figsize=figsize)
+    plt.bar([i - width/2 for i in x], split_counts, width=width, label="Split Size", alpha=0.7)
+    plt.bar([i + width/2 for i in x], cond_counts, width=width, label="Cond Size", alpha=0.7)
+
+    plt.xlabel("Set Size")
+    plt.ylabel("Frequency")
+    plt.title("Distribution of Prediction Set Sizes")
+    plt.xticks(x, all_sizes)
+    plt.legend()
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches="tight")
+        print(f"[INFO] Saved histogram to {save_path}")
+    else:
+        plt.show()
+
+
+
+plot_size_hist_comparison(csv_file="results/pred_sets_20250910_155005.csv", save_path="Figures/pred_set_size.pdf")

@@ -27,21 +27,19 @@ def extract_rxrx_features(dataset, featurizer, classifier, batch_size=128, devic
             labels_list.append(labels.detach().cpu())
             print(f"Processed batch with {images.size(0)} samples.")
 
-        combined_features = torch.cat(features_list, dim=0)
-        combined_logits = torch.cat(logits_list, dim=0)
-        combined_labels = torch.cat(labels_list, dim=0)
+        features = torch.cat(features_list, dim=0)
+        logits = torch.cat(logits_list, dim=0)
+        labels = torch.cat(labels_list, dim=0)
 
-    return (
-        combined_features,
-        combined_logits,
-        combined_labels,
-    )
+    return features,logits,labels
 
-def save_rxrx_features(features, logits, y,  path='data/rxrx1_v1.0/rxrx1_features.pt'):
-    if os.path.exists(path):
-        print(f"File already exists: {path}")
-        return
+def save_rxrx_features(features, logits, y,  path='data/rxrx1_v1.0/rxrx1_features.pt', overwrite=False):
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    if os.path.exists(path) and not overwrite:
+        print(f"File already exists: {path}. Skipping save.")
+        return
+
     print("Saving features to:", path)
     torch.save({"features": features, "y": y, "logits": logits}, path)
     print("Features saved successfully.")
@@ -54,16 +52,14 @@ def load_rxrx_features(filepath, device=None):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     data = torch.load(filepath, map_location=device)
-    features = data["features"].to(device)
-    logits = data["logits"].to(device)
-    y = data["y"].to(device)
+    features, logits, y = data["features"], data["logits"], data["y"]
+
     print(f"Loaded features from {filepath} onto {device}")
     return features, logits, y
 
 if __name__ == "__main__":
     # Load test data and metadata
     test_images, test_metadata = load_rxrx1_test_data()
-
     model, featurizer, classifier = create_rxrx1_model()
 
     filepath = 'data/rxrx1_v1.0/rxrx1_features.pt'

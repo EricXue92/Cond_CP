@@ -30,4 +30,5 @@ def compute_conformity_scores(x_calib, x_test, y_calib, y_test, device=None):
     scores_calib = (probs_calib * (probs_calib > p_true_cal.unsqueeze(1))).sum(dim=1)
     scores_test  = (probs_test  * (probs_test  > p_true_tst.unsqueeze(1))).sum(dim=1)
 
-    return scores_calib.cpu().numpy(), scores_test.cpu().numpy()
+    return ( scores_calib.cpu().numpy(), scores_test.cpu().numpy(),
+             probs_calib.detach().cpu().numpy(), probs_test.detach().cpu().numpy() )
