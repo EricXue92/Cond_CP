@@ -158,8 +158,7 @@ def add_error_bars(barplot_obj, dataframe, err_col="error"):
                     fmt="none", c="k", capsize=3, elinewidth=1)
 
 
-
-def save_or_append_csv(df, filename, save_dir="results"):
+def save_csv(df, filename, save_dir="results"):
     Path(save_dir).mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     name = f"{filename}_{timestamp}.csv"
@@ -290,5 +289,4 @@ def plot_size_hist_comparison(csv_file, figsize=(8, 6), save_path=None):
         plt.show()
 
 
-
-plot_size_hist_comparison(csv_file="results/pred_sets_20250910_155005.csv", save_path="Figures/pred_set_size.pdf")
+plot_size_hist_comparison("results/pred_sets_20250910_155005.csv", figsize=(8, 6), save_path="Figures/Size_Histogram.pdf")

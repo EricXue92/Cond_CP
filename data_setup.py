@@ -1,29 +1,38 @@
+import os
 import torch
 import numpy as np
 import random
 import pandas as pd
 from torchvision import transforms
 from wilds import get_dataset
+from PIL import Image
+from torch.utils.data import Dataset, DataLoader
 
-def create_rxrx1_transform():
-  """ Per-image, per-channel standardization for RxRx1. """
-  standardize = lambda x: (x - x.mean(dim=(1, 2), keepdim=True)) / torch.clamp(x.std(dim=(1, 2),
-                                                                                     keepdim=True), min=1e-8)
-  return transforms.Compose([transforms.ToTensor(), transforms.Lambda(standardize)])
 
-def load_rxrx1_test_data(seed=1):
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-    # Load dataset and test subset
-    transform = create_rxrx1_transform()
-    dataset = get_dataset(dataset="rxrx1", download=False)
-    test_data = dataset.get_subset("test", transform=transform)
-    metadata = pd.read_csv('data/rxrx1_v1.0/metadata.csv')
-    test_metadata = metadata[metadata['dataset'] == 'test']
-    print("Got test dataset with size:", len(test_data))
-    return test_data, test_metadata
+class ChestXrayDataset(Dataset):
+    """Custom dataset for ChestXray8 with splits from metadata.csv"""
+    def __init__(self, metadata_csv, split, transform=None):
+        """
+        Args:
+            metadata_csv (str): Path to metadata.csv
+            split (int): 0=train, 1=calibration, 2=test
+            transform (callable, optional): Optional transforms for images
+        """
+        self.df = pd.read_csv(metadata_csv)
+        self.df = self.df[self.df["split"] == split].reset_index(drop=True)
+        self.transform = transform
 
-# test_images, metaData = load_rxrx1_test_data()
-# print("Test dataset size:", len(test_images))
-# print("Metadata dataset size:", len(metaData))
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        img_path = self.df.loc[idx, "filepath"]
+        label = self.df.loc[idx, "labels"]
+
+        image = Image.open(img_path).convert("RGB")
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label
+

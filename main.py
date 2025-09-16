@@ -3,7 +3,7 @@ import torch
 
 from utils import (computeFeatures, find_best_regularization,
                    create_train_calib_test_split, encode_labels, build_cov_df,
-                   plot_miscoverage, encode_columns, save_or_append_csv, one_hot_encode,set_seed
+                   plot_miscoverage, encode_columns, save_csv, one_hot_encode,set_seed
                    ,save_prediction_sets)
 
 from extract_features import load_rxrx_features
@@ -32,6 +32,7 @@ def main(args):
     assert len(metadata) == len(y), "metadata and y size mismatch"
 
     train_idx, calib_idx, test_idx = create_train_calib_test_split(len(features))
+
     # cal_scores: (n_cal,), test_scores: (n_test,)
     cal_scores, test_scores, probs_cal, probs_test = compute_conformity_scores(logits[calib_idx, :], logits[test_idx, :],
                                                         y[calib_idx], y[test_idx])
@@ -80,9 +81,10 @@ def main(args):
     df_cov_experiments = build_cov_df(coverages_split, coverages_cond, metadata['experiment'].iloc[test_idx],
                                     group_name='Experiment')
 
-    save_or_append_csv(df_cov_cells, "cells","results")
-    save_or_append_csv(df_cov_experiments, "experiments","results")
+    save_csv(df_cov_cells, "cells","results")
+    save_csv(df_cov_experiments, "experiments","results")
     plot_miscoverage(save_name="Experiment_Cell_Miscoverage.pdf")
+
     return
 
 def parse_arguments():
@@ -98,7 +100,6 @@ def parse_arguments():
         parser.error("Exactly one of group or soft must be set.")
     print("runing with args:", args)
     return args
-
 
 if __name__ == "__main__":
     args = parse_arguments()

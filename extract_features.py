@@ -2,7 +2,7 @@ import os
 import torch
 from torch.utils.data import DataLoader
 from model_builder import create_rxrx1_model
-from data_setup import load_rxrx1_test_data
+from datasets import load_rxrx1_test_data
 
 def extract_rxrx_features(dataset, featurizer, classifier, batch_size=128, device=None):
     """Extract features and logits from dataset using provided models."""

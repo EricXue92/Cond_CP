@@ -7,11 +7,6 @@ from utils import split_threshold
 import os
 from datetime import datetime
 
-# import warnings
-# warnings.filterwarnings("ignore",
-#                        message="You didn't specify the order of the vec expression")
-
-
 def compute_prediction_sets(probs_test, q_split, cond_thresholds,
                             saved_dir="results", base_name="pred_sets"):
 
