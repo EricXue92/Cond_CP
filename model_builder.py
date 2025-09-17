@@ -6,6 +6,8 @@ from torchvision.models import vit_b_32, ViT_B_32_Weights
 from copy import deepcopy
 
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 def create_rxrx1_model(num_classes=1139, checkpoint_path='checkpoints/rxrx1_seed_0_epoch_best_model.pth'):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = models.resnet50()
@@ -36,32 +38,51 @@ def create_rxrx1_model(num_classes=1139, checkpoint_path='checkpoints/rxrx1_seed
     classifier = model.fc.eval()
     return model, featurizer, classifier
 
-def create_vit_model(num_classes=1139, freeze_backbone=True):
+# def create_vit_model(num_classes=1139, freeze_backbone=True):
+#     weights = ViT_B_32_Weights.DEFAULT
+#     model = vit_b_32(weights=weights)
+#
+#     if freeze_backbone:
+#         for name, param in model.named_parameters():
+#             if 'heads' not in name:  # More explicit than freezing all then unfreezing
+#                 param.requires_grad = False
+#
+#     in_dim = model.heads.head.in_features  # Should be 768 for ViT-B/32
+#     model.heads.head = nn.Linear(in_dim, num_classes)
+#
+#     # Print model info
+#     total_params = sum(p.numel() for p in model.parameters())
+#     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+#
+#     print(f"Model created with {num_classes} classes")
+#     print(f"Total parameters: {total_params:,}")
+#     print(f"Trainable parameters: {trainable_params:,}")
+#
+#     # optimizer = torch.optim.AdamW(
+#     #     [p for p in model.parameters() if p.requires_grad],
+#     #     lr=1e-3, weight_decay=1e-4
+#     # )
+#     return model
+
+
+def git_vit_backbone():
     weights = ViT_B_32_Weights.DEFAULT
-    model = vit_b_32(weights=weights)
-
-    if freeze_backbone:
-        for name, param in model.named_parameters():
-            if 'heads' not in name:  # More explicit than freezing all then unfreezing
-                param.requires_grad = False
-
-    in_dim = model.heads.head.in_features  # Should be 768 for ViT-B/32
-    model.heads.head = nn.Linear(in_dim, num_classes)
-
-    # Print model info
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-    print(f"Model created with {num_classes} classes")
-    print(f"Total parameters: {total_params:,}")
-    print(f"Trainable parameters: {trainable_params:,}")
-
-    # optimizer = torch.optim.AdamW(
-    #     [p for p in model.parameters() if p.requires_grad],
-    #     lr=1e-3, weight_decay=1e-4
-    # )
+    model = vit_b_32(weights=weights).to(device)
+    model.eval()
+    for p in model.parameters():
+        p.requires_grad = False
+    model.heads = torch.nn.Identity() # shape: (batch_size, 768)
     return model
 
+class LinearClassifier(nn.Module):
+    def __init__(self, in_dim=768, num_classes=1139, dropout=0.2):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.fc = nn.Linear(in_dim, num_classes)
+
+    def forward(self, x):
+        x = self.dropout(x)
+        return self.fc(x)
 
 
 
