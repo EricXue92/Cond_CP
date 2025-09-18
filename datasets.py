@@ -3,14 +3,11 @@ import torch
 import numpy as np
 import random
 import pandas as pd
-from torchvision import transforms
 from wilds import get_dataset
-from PIL import Image
-from torch.utils.data import Dataset, DataLoader
-
+from torch.utils.data import TensorDataset
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from data_setup import ChestXray
+from extract_features import load_features
 
 def create_rxrx1_transform():
   """ Per-image, per-channel standardization for RxRx1. """
@@ -31,28 +28,28 @@ def load_rxrx1_test_data(seed=1):
     print("Got test dataset with size:", len(test_data))
     return test_data, test_metadata
 
-def build_dataloaders(metadata_csv, batch_size=32, num_workers=4, image_size=224):
-    """Build dataloaders for train/cal/test splits."""
-    # Common transforms
-    train_tfms = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-    ])
-    test_tfms = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.ToTensor(),
-    ])
 
-    # Create datasets
-    train_dataset = ChestXray(metadata_csv, split=0, transform=train_tfms)
-    calib_dataset = ChestXray(metadata_csv, split=1, transform=test_tfms)
-    test_dataset = ChestXray(metadata_csv, split=2, transform=test_tfms)
+def load_dataloaders(train_path, calib_path, test_path, batch_size=128):
+    try:
+        train_features, _, train_labels = load_features(train_path)
+        calib_features, _, calib_labels = load_features(calib_path)
+        test_features, _, test_labels   = load_features(test_path)
+    except Exception as e:
+        raise RuntimeError(f"Error loading features: {e}")
 
-    # Create loaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    calib_loader = DataLoader(calib_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    # Verify data shapes match
+    assert train_features.shape[1:] == calib_features.shape[1:] == test_features.shape[1:], \
+            "Feature dimensions don't match across splits"
+
+    train_dataset = TensorDataset(train_features, train_labels)
+    calib_dataset = TensorDataset(calib_features, calib_labels)
+    test_dataset  = TensorDataset(test_features, test_labels)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                              num_workers=4, pin_memory=True)
+    calib_loader = DataLoader(calib_dataset, batch_size=batch_size, shuffle=False,
+                              num_workers=4, pin_memory=True)
+    test_loader  = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+                              num_workers=4, pin_memory=True)
 
     return train_loader, calib_loader, test_loader
-

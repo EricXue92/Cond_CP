@@ -3,10 +3,9 @@ import torch
 
 from utils import (computeFeatures, find_best_regularization,
                    create_train_calib_test_split, encode_labels, build_cov_df,
-                   plot_miscoverage, encode_columns, save_csv, one_hot_encode,set_seed
-                   ,save_prediction_sets)
-
-from extract_features import load_rxrx_features
+                   plot_miscoverage, save_csv, one_hot_encode,set_seed
+                   )
+from extract_features import load_features
 from conformal_scores import compute_conformity_scores
 import os
 import pandas as pd
@@ -21,7 +20,7 @@ def main(args):
     filepath = 'data/rxrx1_v1.0/rxrx1_features.pt'  # labels: sirna
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Features file not found: {filepath}")
-    features, logits, y= load_rxrx_features(filepath)
+    features, logits, y= load_features(filepath)
 
     # Load metadata
     metadata = pd.read_csv('data/rxrx1_v1.0/metadata.csv')
@@ -88,7 +87,6 @@ def main(args):
     return
 
 def parse_arguments():
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--alpha", type=float, default=0.1, help="Miscoverage level")
     parser.add_argument("--group_flag", action="store_true", help="Use group_flag")
@@ -104,5 +102,4 @@ def parse_arguments():
 if __name__ == "__main__":
     args = parse_arguments()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     main(args)

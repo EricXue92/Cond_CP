@@ -64,7 +64,6 @@ def create_rxrx1_model(num_classes=1139, checkpoint_path='checkpoints/rxrx1_seed
 #     # )
 #     return model
 
-
 def git_vit_backbone():
     weights = ViT_B_32_Weights.DEFAULT
     model = vit_b_32(weights=weights).to(device)
