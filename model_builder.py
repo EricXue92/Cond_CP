@@ -74,7 +74,7 @@ def git_vit_backbone():
     return model
 
 class LinearClassifier(nn.Module):
-    def __init__(self, in_dim=768, num_classes=1139, dropout=0.2):
+    def __init__(self, in_dim=768, num_classes=15, dropout=0.2):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
         self.fc = nn.Linear(in_dim, num_classes)
@@ -83,7 +83,21 @@ class LinearClassifier(nn.Module):
         x = self.dropout(x)
         return self.fc(x)
 
-
+# class LinearClassifier(nn.Module):
+#     def __init__(self, in_dim=768, num_classes=15, dropout=0.2):
+#         super().__init__()
+#         self.fc1 = nn.Linear(in_dim, 512)
+#         self.bn1 = nn.BatchNorm1d(512)
+#         self.relu = nn.ReLU()
+#         self.dropout = nn.Dropout(dropout)
+#         self.fc2 = nn.Linear(512, num_classes)
+#
+#     def forward(self, x):
+#         x = self.fc1(x)
+#         x = self.bn1(x)
+#         x = self.relu(x)
+#         x = self.dropout(x)
+#         return self.fc2(x)
 
 
 

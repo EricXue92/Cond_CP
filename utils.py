@@ -323,4 +323,4 @@ def plot_loss_curves(results):
 
 
 
-plot_size_hist_comparison("results/pred_sets_20250910_155005.csv", figsize=(8, 6), save_path="Figures/Size_Histogram.pdf")
+# plot_size_hist_comparison("results/pred_sets_20250910_155005.csv", figsize=(8, 6), save_path="Figures/Size_Histogram.pdf")

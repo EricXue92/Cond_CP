@@ -16,9 +16,6 @@ def create_rxrx1_transform():
   return transforms.Compose([transforms.ToTensor(), transforms.Lambda(standardize)])
 
 def load_rxrx1_test_data(seed=1):
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
     # Load dataset and test subset
     transform = create_rxrx1_transform()
     dataset = get_dataset(dataset="rxrx1", download=False)
@@ -37,19 +34,15 @@ def load_dataloaders(train_path, calib_path, test_path, batch_size=128):
     except Exception as e:
         raise RuntimeError(f"Error loading features: {e}")
 
-    # Verify data shapes match
-    assert train_features.shape[1:] == calib_features.shape[1:] == test_features.shape[1:], \
-            "Feature dimensions don't match across splits"
+    train_ds = TensorDataset(train_features, train_labels)
+    calib_ds = TensorDataset(calib_features, calib_labels)
+    test_ds  = TensorDataset(test_features, test_labels)
 
-    train_dataset = TensorDataset(train_features, train_labels)
-    calib_dataset = TensorDataset(calib_features, calib_labels)
-    test_dataset  = TensorDataset(test_features, test_labels)
-
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
                               num_workers=4, pin_memory=True)
-    calib_loader = DataLoader(calib_dataset, batch_size=batch_size, shuffle=False,
+    calib_loader = DataLoader(calib_ds, batch_size=batch_size, shuffle=False,
                               num_workers=4, pin_memory=True)
-    test_loader  = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+    test_loader  = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
                               num_workers=4, pin_memory=True)
 
     return train_loader, calib_loader, test_loader

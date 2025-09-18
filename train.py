@@ -16,7 +16,7 @@ def main(args):
             test_path=args.test_path,
             batch_size=args.batch_size)
     # Build model
-    if args.dataset == "ChestXray":
+    if args.dataset == "ChestX":
         num_classes = 15
     elif args.dataset == "PadChest":
         num_classes = 19
@@ -24,9 +24,10 @@ def main(args):
         num_classes = 28
     else:
         raise ValueError(f"Unknown dataset {args.dataset}")
+
     model = LinearClassifier(in_dim=768, num_classes=num_classes, dropout=args.dropout).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
-    loss_fn = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    loss_fn = torch.nn.BCEWithLogitsLoss()
 
     os.makedirs("checkpoints", exist_ok=True)
     best_model_path = os.path.join(args.ckpt_dir, f"best_model_{args.dataset}.pth")
@@ -57,12 +58,14 @@ def train_step(model, train_loader, loss_fn, optimizer, device):
 
     for idx, (X, y) in enumerate(train_loader):
         X, y = X.to(device), y.to(device)
-        y_pred = model(X)
-        loss = loss_fn(y_pred, y)
-        train_loss += loss.item()
+        if y.ndim > 1:
+            y = torch.argmax(y, dim=1)
 
-        preds =torch.argmax(y_pred, dim=1)
-        train_acc += (preds == y).sum().item()
+        y_pred = model(X)
+        loss = loss_fn(y_pred, y.float())
+        train_loss += loss.item()
+        preds = torch.sigmoid(y_pred) > 0.5
+        train_acc += (preds == y.bool()).float().mean().item()
         total_samples += y.size(0)
 
         optimizer.zero_grad()
@@ -84,6 +87,8 @@ def test_step(model, data_loader, loss_fn, device):
 
     with torch.no_grad():
         for X, y in data_loader:
+            if y.ndim > 1:
+                y = torch.argmax(y, dim=1)
             X, y = X.to(device), y.to(device)
             y_pred = model(X)
             loss = loss_fn(y_pred, y)
@@ -92,8 +97,8 @@ def test_step(model, data_loader, loss_fn, device):
             prob_list.append(y_pred.detach().cpu())
             target_list.append(y.detach().cpu())
 
-            preds = torch.argmax(y_pred, dim=1)
-            test_acc += (preds == y).sum().item()
+            preds = torch.sigmoid(y_pred) > 0.5
+            test_acc += (preds == y.bool()).float().mean().item()
             total_samples += y.size(0)
 
     avg_loss = test_loss / len(data_loader)
@@ -126,6 +131,7 @@ def train_model(model, train_loader, calib_loader, optimizer, loss_fn, device,
         val_loss, val_acc = test_step(model, calib_loader, loss_fn, device)
         learning_curve["val_loss"].append(val_loss)
         learning_curve["val_acc"].append(val_acc)
+
 
         # Save "last checkpoint" (always overwrite)
         save_checkpoint(model, optimizer, epoch + 1, val_loss, val_acc, last_checkpoint_path)
@@ -170,11 +176,12 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description=f'Train classifier')
     parser.add_argument('--epochs', type=int, default=20, help='Number of training epochs (default: 10)')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training (default: 128)')
-    parser.add_argument('--learning_rate', type=float, default=3e-3, help='Learning rate for optimizer (default: 0.001)')
+    parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for optimizer (default: 0.001)')
     parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate (default: 0.2)')
-    parser.add_argument('--train_path', type=str, default="features/ChestXray_train.pt")
-    parser.add_argument('--calib_path', type=str, default="features/ChestXray_calib.pt")
-    parser.add_argument('--test_path', type=str, default="features/ChestXray_test.pt")
+    parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay (default: 1e-4)')
+    parser.add_argument('--train_path', type=str, default="features/ChestX_train.pt")
+    parser.add_argument('--calib_path', type=str, default="features/ChestX_calib.pt")
+    parser.add_argument('--test_path', type=str, default="features/ChestX_test.pt")
     parser.add_argument("--dataset", default="ChestX",
                         choices=["ChestX", "PadChest", 'VinDr', "MIMIC"])
     parser.add_argument('--ckpt_dir', type=str, default='checkpoints', help='Directory to save checkpoints (default: checkpoints)')

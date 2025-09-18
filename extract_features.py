@@ -5,20 +5,21 @@ os.environ["CUDA_VISIBLE_DEVICES"] = gpu_choice
 import torch
 from torch.utils.data import DataLoader
 from model_builder import create_rxrx1_model
-from datasets import load_rxrx1_test_data
 from torchvision import transforms
 from data_setup import ChestXray
 from model_builder import git_vit_backbone
 
+gpu_choice = "0"   # safer default (change to "1" if you KNOW you have >1 GPU)
+os.environ["CUDA_VISIBLE_DEVICES"] = gpu_choice
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def extract_features(dataset, featurizer, classifier=None, batch_size=128):
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False,num_workers=4, pin_memory=True)
     features_list, logits_list, labels_list = [], [], []
+
     featurizer.to(device).eval()
     if classifier is not None:
         classifier.to(device).eval()
-
     with torch.no_grad():
         for batch in dataloader:
             if len(batch) == 2:
@@ -28,11 +29,11 @@ def extract_features(dataset, featurizer, classifier=None, batch_size=128):
                 images, labels, metadata = batch
             else:
                 raise ValueError("Expected batch to have 2 or 3 elements (images, labels, [metadata])")
-            images = images.to(device)
+            images = images.to(device, non_blocking=True)
             features = featurizer(images)
             if classifier is not None:
                 logits = classifier(features)
-                logits_list.append(logits)
+                logits_list.append(logits.detach().cpu())
             else:
                 logits = None
             # Keep tensors, move to CPU for storage
@@ -47,13 +48,14 @@ def extract_features(dataset, featurizer, classifier=None, batch_size=128):
 def save_features(features, logits, y,  filename, savedir="features", overwrite=False):
     os.makedirs(savedir, exist_ok=True)
     path = os.path.join(savedir, filename)
+
     if os.path.exists(path) and not overwrite:
         print(f"File already exists: {path}. Skipping save.")
         return
 
-    payload = {"features": features, "y": y}
+    payload = {"features": features.cpu(), "y": y.cpu()}
     if logits is not None:
-        payload["logits"] = logits
+        payload["logits"] = logits.cpu()
 
     print("Saving features to:", path)
     torch.save(payload, path)
@@ -62,7 +64,8 @@ def save_features(features, logits, y,  filename, savedir="features", overwrite=
 def load_features(path):
     if not os.path.isfile(path):
         raise FileNotFoundError(f"Features file not found: {path}")
-    data = torch.load(path, map_location=device)
+    #
+    data = torch.load(path, map_location="cpu")
     features, y = data["features"], data["y"]
     logits = data.get("logits", None)
     print(f"Loaded features from {path} onto {device}")
@@ -85,15 +88,12 @@ if __name__ == "__main__":
     train_ds = ChestXray(metadata_csv, split=0, transform=tfm)
     calib_ds = ChestXray(metadata_csv, split=1, transform=tfm)
     test_ds = ChestXray(metadata_csv, split=2, transform=tfm)
-
     featurizer = git_vit_backbone()  # Use the ViT backbone
-
     datasets_and_names = [
-        (train_ds, "ChestXray_train.pt"),
-        (calib_ds, "ChestXray_calib.pt"),
-        (test_ds, "ChestXray_test.pt")
+        (train_ds, "ChestX_train.pt"),
+        (calib_ds, "ChestX_calib.pt"),
+        (test_ds, "ChestX_test.pt")
     ]
-
     for dataset, name in datasets_and_names:
         path = os.path.join("features", name)
         if not os.path.exists(path):
