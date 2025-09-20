@@ -1,13 +1,10 @@
-import os
 import torch
-import numpy as np
-import random
 import pandas as pd
 from wilds import get_dataset
 from torch.utils.data import TensorDataset
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from extract_features import load_features
+from feature_io import load_features
 
 def create_rxrx1_transform():
   """ Per-image, per-channel standardization for RxRx1. """

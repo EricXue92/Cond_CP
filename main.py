@@ -1,13 +1,10 @@
-from tornado.http1connection import parse_hex_int
+import os
 import torch
-
 from utils import (computeFeatures, find_best_regularization,
                    create_train_calib_test_split, encode_labels, build_cov_df,
-                   plot_miscoverage, save_csv, one_hot_encode,set_seed
-                   )
+                   plot_miscoverage, save_csv, one_hot_encode,set_seed)
 from extract_features import load_features
 from conformal_scores import compute_conformity_scores
-import os
 import pandas as pd
 from conditional_coverage import compute_both_coverages, compute_prediction_sets
 import numpy as np
@@ -17,10 +14,9 @@ set_seed(42)
 
 def main(args):
     # Load features
-    filepath = 'data/rxrx1_v1.0/rxrx1_features.pt'  # labels: sirna
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(f"Features file not found: {filepath}")
-    features, logits, y= load_features(filepath)
+    if not os.path.exists(args.features_path):
+        raise FileNotFoundError(f"Features file not found: {args.features_path}")
+    features, logits, y= load_features(args.features_path)
 
     # Load metadata
     metadata = pd.read_csv('data/rxrx1_v1.0/metadata.csv')
@@ -89,10 +85,18 @@ def main(args):
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--alpha", type=float, default=0.1, help="Miscoverage level")
-    parser.add_argument("--group_flag", action="store_true", help="Use group_flag")
+    parser.add_argument("--group_flag", action="store_false", help="Use group_flag")
     parser.add_argument("--soft_flag", action="store_true", help="Use soft_flag")
-    parser.add_argument("--add_celltype", action="store_true",
+    parser.add_argument('--features_path', type=str,  default="data/rxrx1_v1.0/rxrx1_features.pt")
+    parser.add_argument("--add_celltype", action="store_false",
                         help="Add cell type one-hots to features")
+    parser.add_argument("--dataset", default="ChestX",
+                        choices=["ChestX", "PadChest", 'VinDr', "MIMIC"])
+    parser.add_argument('--train_path', type=str, default="features/ChestX_train.pt")
+    parser.add_argument('--calib_path', type=str, default="features/ChestX_calib.pt")
+    parser.add_argument('--test_path', type=str, default="features/ChestX_test.pt")
+
+
     args = parser.parse_args()
     if sum([args.soft_flag, args.group_flag]) != 1:
         parser.error("Exactly one of group or soft must be set.")
