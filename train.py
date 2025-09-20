@@ -5,9 +5,10 @@ import numpy as np
 from model_builder import LinearClassifier
 from data_utils import load_dataloaders
 from model_setup import save_checkpoint, load_best_model
-from utils import plot_loss_curves
+from plot_utils import plot_loss_curves
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 # Dataset configuration
 DATASET_CONFIG = {
     "ChestX": 15,
@@ -15,50 +16,6 @@ DATASET_CONFIG = {
     "VinDr": 28
 }
 
-def main(args):
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    train_loader, calib_loader, test_loader = load_dataloaders(
-            train_path=args.train_path,
-            calib_path=args.calib_path,
-            test_path=args.test_path,
-            batch_size=args.batch_size)
-    # Build model
-    if args.dataset == "ChestX":
-        num_classes = 15
-    elif args.dataset == "PadChest":
-        num_classes = 19
-    elif args.dataset == "VinDr":
-        num_classes = 28
-    else:
-        raise ValueError(f"Unknown dataset {args.dataset}")
-
-    model = LinearClassifier(in_dim=768, num_classes=num_classes, dropout=args.dropout).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
-    loss_fn = torch.nn.BCEWithLogitsLoss()
-
-    os.makedirs("checkpoints", exist_ok=True)
-    best_model_path = os.path.join(args.ckpt_dir, f"best_model_{args.dataset}.pth")
-    last_checkpoint_path = os.path.join(args.ckpt_dir, f"last_checkpoint_{args.dataset}.pth")
-
-    # --- Training ---
-    if os.path.exists(best_model_path):
-        print("Best model already exists. Skipping training.")
-    else:
-        print(f"Training model for {args.dataset}...")
-        learning_curve, best_model_path, last_checkpoint_path = train_model(
-            model, train_loader, calib_loader, optimizer, loss_fn, device,
-            epochs=args.epochs, ckpt_dir=args.ckpt_dir
-        )
-    # -- Inference on test data --
-    test_predictions, test_targets, test_probs = inference(best_model_path, test_loader, device)
-    print("Training complete!")
-    print(f"Saved best model to {best_model_path}")
-    print(f"Saved last checkpoint to {last_checkpoint_path}")
-    print(f"Test predictions shape: {len(test_predictions)}, Test targets shape: {len(test_targets)}")
-
-
-# """Perform one training epoch."""
 def train_step(model, dataloader, loss_fn, optimizer):
     model.train()
     total_loss, correct_predictions, total_samples = 0, 0, 0
@@ -87,8 +44,6 @@ def eval_step(model, dataloader, loss_fn, split_name="Test"):
     model.eval()
     total_loss, correct_predictions, total_samples = 0, 0, 0
 
-    prob_list, target_list = [], []
-
     with torch.no_grad():
         for X, y in dataloader:
             X, y = X.to(device), y.to(device)
@@ -101,15 +56,9 @@ def eval_step(model, dataloader, loss_fn, split_name="Test"):
             correct_predictions += (preds == y.bool()).float().sum().item()
             total_samples += y.numel()
 
-            # prob_list.append(y_pred.detach().cpu())
-            # target_list.append(y.detach().cpu())
-
     avg_loss = total_loss / len(dataloader)
     accuracy = 100 * correct_predictions / total_samples
     print(f"{split_name} Loss : {avg_loss:.4f} | {split_name} Accuracy: {accuracy:.2f}%")
-    # # Concatenate predictions and labels
-    # prob = torch.cat(prob_list, dim=0)
-    # target = torch.cat(target_list, dim=0)
     return avg_loss, accuracy
 
 def train_model(model, train_loader, val_loader, optimizer, loss_fn, args):
@@ -146,14 +95,15 @@ def train_model(model, train_loader, val_loader, optimizer, loss_fn, args):
             save_checkpoint(model, optimizer, epoch + 1, val_loss, val_acc, best_model_path)
             print(f"New best model saved! Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
 
-    print(f"\nTraining completed!")
+    print(f"\n{'=' * 50}")
     print(f"Best model: Epoch {best_epoch}, Val Loss: {best_val_loss:.4f}, Val Acc: {best_val_acc:.2f}%")
 
     plot_loss_curves(learning_curve)
     return best_model_path, last_checkpoint_path
 
 def run_inference(model_path, test_loader):
-    print("Loading best model for inference...")
+    print(f"\n{'=' * 50}")
+    print("\nLoading best model for inference...")
     model = load_best_model(model_path, device)
     model.eval()
 
@@ -176,13 +126,11 @@ def run_inference(model_path, test_loader):
     probabilities = np.array(probabilities)
 
     total_labels = targets.size
-    correct_labels = (predictions == targets).sum()
+    correct_labels = np.equal(predictions, targets).sum()
     accuracy = 100.0 * correct_labels / total_labels
 
-    print("\n Inference completed!")
-    print(f"  Multi-label accuracy: {accuracy:.2f}% "
+    print(f"Multi-label accuracy: {accuracy:.2f}% "
           f"({correct_labels}/{total_labels} labels correct)")
-
     return predictions, targets, probabilities
 
 def setup_model_and_training(args):
@@ -209,7 +157,7 @@ def setup_model_and_training(args):
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Train classifier on extracted features')
     # Training parameters
-    parser.add_argument('--epochs', type=int, default=40, help='Number of epochs (default: 30)')
+    parser.add_argument('--epochs', type=int, default=30, help='Number of epochs (default: 30)')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size (default: 128)')
     parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate (default: 1e-4)')
     parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate (default: 0.2)')
@@ -221,7 +169,7 @@ def parse_arguments():
     # Dataset and checkpoint directory
     parser.add_argument("--dataset", default="ChestX", choices=["ChestX", "PadChest", "VinDr", "MIMIC"])
     parser.add_argument('--ckpt_dir', type=str, default='checkpoints', help='Checkpoint directory')
-    parser.add_argument('--overwrite', action='store_false', help='Overwrite existing model and retrain')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite existing model and retrain')
     return parser.parse_args()
 
 def main():
@@ -236,6 +184,7 @@ def main():
     )
     # Setup model and training components
     model, optimizer, loss_fn = setup_model_and_training(args)
+
     # Check if model already exists
     best_model_path = os.path.join(args.ckpt_dir, f"best_model_{args.dataset}.pth")
 
@@ -254,11 +203,7 @@ def main():
         )
 
     # Run inference on test data
-    test_predictions, test_targets, test_probs = run_inference(best_model_path, test_loader)
-    # Summary
-    print(f"\n{'=' * 50}")
-    print("Training Complete!")
-    print(f"Best model saved to: {best_model_path}")
+    run_inference(best_model_path, test_loader)
 
 if __name__ == "__main__":
     main()
