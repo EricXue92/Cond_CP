@@ -1,14 +1,13 @@
 import os
 import torch
 import argparse
+import numpy as np
 from model_builder import LinearClassifier
 from data_utils import load_dataloaders
-
 from model_setup import save_checkpoint, load_best_model
 from utils import plot_loss_curves
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 # Dataset configuration
 DATASET_CONFIG = {
     "ChestX": 15,
@@ -123,7 +122,7 @@ def train_model(model, train_loader, val_loader, optimizer, loss_fn, args):
     best_model_path = os.path.join(args.ckpt_dir, f"best_model_{args.dataset}.pth")
     last_checkpoint_path = os.path.join(args.ckpt_dir, f"last_checkpoint_{args.dataset}.pth")
 
-    for epoch in range(args.dataset):
+    for epoch in range(args.epochs):
         print(f"\nEpoch: {epoch + 1}/{args.epochs}\n {'-' * 40}")
 
         # Training step
@@ -172,6 +171,18 @@ def run_inference(model_path, test_loader):
             targets.extend(y.cpu().numpy())
             probabilities.extend(probs)
 
+    predictions = np.array(predictions)
+    targets = np.array(targets)
+    probabilities = np.array(probabilities)
+
+    total_labels = targets.size
+    correct_labels = (predictions == targets).sum()
+    accuracy = 100.0 * correct_labels / total_labels
+
+    print("\n Inference completed!")
+    print(f"  Multi-label accuracy: {accuracy:.2f}% "
+          f"({correct_labels}/{total_labels} labels correct)")
+
     return predictions, targets, probabilities
 
 def setup_model_and_training(args):
@@ -198,7 +209,7 @@ def setup_model_and_training(args):
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Train classifier on extracted features')
     # Training parameters
-    parser.add_argument('--epochs', type=int, default=30, help='Number of epochs (default: 30)')
+    parser.add_argument('--epochs', type=int, default=40, help='Number of epochs (default: 30)')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size (default: 128)')
     parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate (default: 1e-4)')
     parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate (default: 0.2)')
@@ -210,6 +221,7 @@ def parse_arguments():
     # Dataset and checkpoint directory
     parser.add_argument("--dataset", default="ChestX", choices=["ChestX", "PadChest", "VinDr", "MIMIC"])
     parser.add_argument('--ckpt_dir', type=str, default='checkpoints', help='Checkpoint directory')
+    parser.add_argument('--overwrite', action='store_false', help='Overwrite existing model and retrain')
     return parser.parse_args()
 
 def main():
@@ -228,23 +240,25 @@ def main():
     best_model_path = os.path.join(args.ckpt_dir, f"best_model_{args.dataset}.pth")
 
     if os.path.exists(best_model_path):
-        print("Best model already exists. Skipping training.")
+        if args.overwrite:
+            print("Best model already exists but --overwrite is set. Retraining...")
+            best_model_path, last_checkpoint_path = train_model(
+                model, train_loader, calib_loader, optimizer, loss_fn, args
+            )
+        else:
+            print("Best model already exists. Skipping training.")
     else:
         print(f"Training model for {args.dataset}...")
         best_model_path, last_checkpoint_path = train_model(
             model, train_loader, calib_loader, optimizer, loss_fn, args
         )
 
-        # Run inference on test data
+    # Run inference on test data
     test_predictions, test_targets, test_probs = run_inference(best_model_path, test_loader)
-
     # Summary
     print(f"\n{'=' * 50}")
     print("Training Complete!")
     print(f"Best model saved to: {best_model_path}")
-    print(f"Test predictions shape: {len(test_predictions)}")
-    print(f"Test targets shape: {len(test_targets)}")
-    print(f"{'=' * 50}")
 
 if __name__ == "__main__":
     main()

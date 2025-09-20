@@ -7,6 +7,7 @@ from torchvision import transforms
 from data_setup import ChestXray
 from model_builder import git_vit_featurizer,create_rxrx1_model
 from data_utils import load_rxrx1_test_data
+from feature_io import save_features
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -43,37 +44,11 @@ def extract_features(dataset, featurizer, classifier=None, batch_size=128):
 
             print(f"Processed batch with {images.size(0)} samples.")
 
-        features = torch.cat(features_list, dim=0)
-        labels = torch.cat(labels_list, dim=0)
-        logits = torch.cat(logits_list, dim=0) if classifier is not None else None
+    features = torch.cat(features_list, dim=0)
+    labels = torch.cat(labels_list, dim=0)
+    logits = torch.cat(logits_list, dim=0) if classifier is not None else None
 
     return features,logits,labels
-
-def save_features(features, logits, y,  filename, savedir="features", overwrite=False):
-    os.makedirs(savedir, exist_ok=True)
-    path = os.path.join(savedir, filename)
-
-    if os.path.exists(path) and not overwrite:
-        print(f"File already exists: {path}. Skipping save.")
-        return
-
-    payload = {"features": features.cpu(), "y": y.cpu()}
-    if logits is not None:
-        payload["logits"] = logits.cpu()
-
-    torch.save(payload, path)
-    print(f"Features saved: {path}")
-
-def load_features(path):
-    if not os.path.isfile(path):
-        raise FileNotFoundError(f"Features file not found: {path}")
-
-    data = torch.load(path, map_location="cpu")
-    features, y = data["features"], data["y"]
-    logits = data.get("logits", None)
-
-    print(f"Loaded features from: {path}")
-    return features, logits, y
 
 def get_dataset_config(dataset_name):
 
@@ -105,20 +80,14 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description=f'Extract features using a pretrained model')
     parser.add_argument("--dataset", default="ChestX",
                         choices=["ChestX", "PadChest", 'VinDr', "MIMIC", "rxrx1"])
-    parser.add_argument('--ckpt_dir', type=str, default='checkpoints',
-                        help='Directory to save checkpoints (default: checkpoints)')
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 def main():
-    # Load test data and metadata
     args = parse_arguments()
-
     datasets_and_names, featurizer, classifier = get_dataset_config(args.dataset)
 
     for dataset, filename in datasets_and_names:
         filepath = os.path.join("features", filename)
-
         if os.path.exists(filepath):
             print(f"Features already exist: {filepath}")
             continue
@@ -126,7 +95,6 @@ def main():
         print(f"Extracting features for {filename}...")
         features, logits, labels = extract_features(dataset, featurizer, classifier, batch_size=1024)
         save_features(features, logits, labels, filename)
-
 
 if __name__ == "__main__":
     main()
