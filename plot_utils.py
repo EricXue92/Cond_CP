@@ -94,8 +94,7 @@ def plot_miscoverage(cells_file='results/cells.csv', experiments_file='results/e
 
     # Save plot
     os.makedirs(save_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    save_path = os.path.join(save_dir, f"{save_name}_{timestamp}.pdf")
+    save_path = os.path.join(save_dir, f"{save_name}.pdf")
 
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     print(f"Plot saved: {save_path}")

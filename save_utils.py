@@ -56,3 +56,29 @@ def save_prediction_sets(results, filepath=None, save_dir="results"):
     df.to_csv(filepath, index=False)
     print(f"Saved prediction sets to {filepath}")
     return df
+
+def build_cov_df(coverages_split, coverages_cond, subgrouping, group_name):
+    cov_df = pd.DataFrame({
+        group_name: ['Marginal', 'Marginal'],
+        'Type': ['Split Conformal', 'Conditional Calibration'],
+        'Coverage': [np.mean(coverages_split), np.mean(coverages_cond)],
+        'SampleSize': [len(coverages_split), len(coverages_cond)]
+    })
+
+    subgrouping = pd.Series(subgrouping).reset_index(drop=True)
+
+    for i, g in enumerate(np.unique(subgrouping), 1):
+        mask = (subgrouping == g).to_numpy()
+        group_size = int(mask.sum())
+
+        new_df = pd.DataFrame({
+            group_name: [i, i],
+            'Type': ['Split Conformal', 'Conditional Calibration'],
+            'Coverage': [np.mean(coverages_split[mask]), np.mean(coverages_cond[mask])],
+            'SampleSize': [group_size, group_size]
+        })
+        cov_df = pd.concat([cov_df, new_df], ignore_index=True)
+
+    cov_df['error'] = 1.96 * np.sqrt(cov_df['Coverage'] * (1 - cov_df['Coverage']) / cov_df['SampleSize'])
+    return cov_df
+

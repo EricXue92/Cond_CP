@@ -61,6 +61,7 @@ def eval_step(model, dataloader, loss_fn, split_name="Test"):
     print(f"{split_name} Loss : {avg_loss:.4f} | {split_name} Accuracy: {accuracy:.2f}%")
     return avg_loss, accuracy
 
+# return best model path and last checkpoint path
 def train_model(model, train_loader, val_loader, optimizer, loss_fn, args):
     os.makedirs(args.ckpt_dir, exist_ok=True)  # make sure checkpoint dir exists
 
@@ -169,7 +170,7 @@ def parse_arguments():
     # Dataset and checkpoint directory
     parser.add_argument("--dataset", default="ChestX", choices=["ChestX", "PadChest", "VinDr", "MIMIC"])
     parser.add_argument('--ckpt_dir', type=str, default='checkpoints', help='Checkpoint directory')
-    parser.add_argument('--overwrite', action='store_true', help='Overwrite existing model and retrain')
+    parser.add_argument('--overwrite', action='store_false', help='Overwrite existing model and retrain')
     return parser.parse_args()
 
 def main():

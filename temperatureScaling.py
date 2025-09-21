@@ -13,9 +13,6 @@ class CalibrationDataset(Dataset):
         return self.logits[i], self.labels[i]
 
 def temperature_scaling(logits, labels, max_iters=1000, lr=0.1, tolerance=1e-4, batch_size=128):
-    """
-    Calibrate logits with temperature scaling. Returns scalar temperature T (>0).
-    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     loader = DataLoader(
         CalibrationDataset(logits, labels),
