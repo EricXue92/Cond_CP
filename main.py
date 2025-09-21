@@ -21,7 +21,7 @@ DATASET_CONFIG = {
         "filter_key": "dataset",
         "filter_value": "test",
         "main_group":"experiment",
-        "additional_features": ["cell_type"],
+        "additional_features": ["cell_type"], # metadata columns
         "grouping_columns": ["experiment", "cell_type"]
     },
     "ChestX": {
@@ -30,7 +30,7 @@ DATASET_CONFIG = {
         "filter_key": None,
         "filter_value": None,
         "main_group": "age",
-        "additional_features": ["age"],
+        "additional_features": ["age"], # metadata columns
         "grouping_columns": ["sex", "age"]
     }
 }
@@ -54,7 +54,6 @@ def load_data(dataset_name, features_path=None):
     assert len(logits) == data_length, "Logits and metadata size mismatch"
     assert len(labels) == data_length, "Labels and metadata size mismatch"
     return features, logits, labels, metadata
-
 
 def create_phi(features, metadata, train_idx, calib_idx, test_idx,
                          dataset_name, use_groups=True, add_additional_features=False):
@@ -139,12 +138,12 @@ def run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores,
     )
     return coverages_split, coverages_cond
 
-
 def save_results(coverages_split, coverages_cond, metadata, test_idx, dataset_name):
     config = DATASET_CONFIG.get(dataset_name, {})
     grouping_columns = config.get("grouping_columns", ["group"])
     available_columns = [col for col in grouping_columns if col in metadata.columns]
 
+    saved_files = []
     for col in available_columns:
         display_name = col.replace('_', ' ').title()
         df_cov = build_cov_df(
@@ -152,11 +151,14 @@ def save_results(coverages_split, coverages_cond, metadata, test_idx, dataset_na
             metadata[col].iloc[test_idx],
             group_name=display_name
         )
-        filename = f"{dataset_name}_{col}_coverage"
+        filename = f"{dataset_name}_{col}"
         save_csv(df_cov, filename, "results")
+        saved_files.append(f"results/{filename}.csv")
 
-    plot_name = f"{dataset_name}_{'_'.join(available_columns[:2])}_coverage"
-    plot_miscoverage(save_name=f"{plot_name}.pdf")
+    plot_miscoverage(main_group=saved_files[0], additional_group=saved_files[1],
+                     target_miscoverage=0.1, save_dir="Figures",
+                     save_name=f"{dataset_name}_miscoverage_comparison")
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Conformal prediction analysis')

@@ -5,18 +5,17 @@ from pathlib import Path
 from matplotlib.ticker import MaxNLocator
 import seaborn as sns
 import os
-from datetime import datetime
 
 def plot_size_hist_comparison(csv_file, figsize=(8, 6), save_path=None):
     df = pd.read_csv(csv_file)
-    # Count frequencies for each size
     split_counts = df["Split_Size"].value_counts().sort_index()
     cond_counts = df["Cond_Size"].value_counts().sort_index()
-    # Ensure both indices cover the same range
     all_sizes = sorted(set(split_counts.index).union(set(cond_counts.index)))
+
     split_counts = split_counts.reindex(all_sizes, fill_value=0)
     cond_counts = cond_counts.reindex(all_sizes, fill_value=0)
 
+    sns.set_theme(style="white", context="notebook", font_scale=2)
     fig, ax = plt.subplots(figsize=figsize)
     x = np.arange(len(all_sizes))
     width = 0.4
@@ -63,33 +62,40 @@ def plot_loss_curves(results, save_dir="Figures", filename="learning_curve.pdf")
     print(f"Learning curves saved to: {save_path}")
     plt.show()
 
-def plot_miscoverage(cells_file='results/cells.csv', experiments_file='results/experiments.csv',
+def plot_miscoverage(main_group='results/rxrx1_experiment.csv', additional_group='results/rxrx1_cell_type.csv',
                     target_miscoverage=0.1, save_dir="Figures",
-                     save_name="Experiment_Cell_Miscoverage"):
-    df_cells = pd.read_csv(cells_file)
-    df_experiments = pd.read_csv(experiments_file)
+                     save_name="rxrx1_miscoverage_comparison"):
 
-    df_cells['Miscoverage'] = 1 - df_cells['Coverage']
-    df_experiments['Miscoverage'] = 1 - df_experiments['Coverage']
+    df_main_group = pd.read_csv(main_group)
+    df_additional_group = pd.read_csv(additional_group)
 
-    sns.set_style("white")
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20.7, 8.27), sharey=True)
+    df_additional_group['Miscoverage'] = 1 - df_additional_group['Coverage']
+    df_main_group['Miscoverage'] = 1 - df_main_group['Coverage']
+
+    standard_cols = {'Type', 'Coverage', 'SampleSize', 'error', 'Miscoverage'}
+    additional_group_col = [col for col in df_additional_group.columns if col not in standard_cols][0]
+    main_group_col = [col for col in df_main_group.columns if col not in standard_cols][0]
+
+    sns.set_theme(style="white", context="notebook", font_scale=2)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20.7, 8.27), sharey='all')
 
     # Cell types plot
-    sns.barplot(data=df_cells, x='Cell Type', y='Miscoverage', hue='Type', ax=ax1)
+    sns.barplot(data=df_additional_group, x=additional_group_col, y='Miscoverage', hue='Type', ax=ax1)
     ax1.axhline(target_miscoverage, color='red', linestyle='--', alpha=0.7)
-    add_error_bars(ax1.collections[0] if ax1.collections else ax1, df_cells)
+
+    if 'error' in df_additional_group.columns:
+        add_error_bars_to_plot(ax1, df_additional_group)
     ax1.legend().remove()
-    ax1.set_title("Cell Types")
+    ax1.set_title(additional_group_col)
 
     # Experiments plot
-    sns.barplot(data=df_experiments, x='Experiment', y='Miscoverage', hue='Type', ax=ax2)
+    sns.barplot(data=df_main_group, x=main_group_col, y='Miscoverage', hue='Type', ax=ax2)
     ax2.axhline(target_miscoverage, color='red', linestyle='--', alpha=0.7)
-    add_error_bars(ax2.collections[0] if ax2.collections else ax2, df_experiments)
+    if 'error' in df_main_group.columns:
+        add_error_bars_to_plot(ax2, df_main_group)
     ax2.tick_params(axis='x', labelsize=14)
     ax2.legend(title='', loc='upper center')
-    ax2.set_title("Experiments")
-
+    # ax2.set_title(main_group_col)
     plt.tight_layout()
 
     # Save plot
@@ -101,18 +107,18 @@ def plot_miscoverage(cells_file='results/cells.csv', experiments_file='results/e
     plt.show()
     return fig, (ax1, ax2)
 
-def add_error_bars(barplot_obj, dataframe, err_col="error"):
-    ax = barplot_obj.axes
-
-    for i, patch in enumerate(barplot_obj.patches):
-        if i >= len(dataframe):
-            continue
-
+def add_error_bars_to_plot(ax, df):
+    patches = ax.patches
+    if not patches or 'error' not in df.columns:
+        return
+    for i, patch in enumerate(patches):
+        if i >= len(df):
+            break
         x_coord = patch.get_x() + 0.5 * patch.get_width()
         y_coord = patch.get_height()
-        error_val = dataframe.iloc[i][err_col]
+        error_val = df.iloc[i]['error']
 
-        ax.errorbar(x=x_coord, y=y_coord, yerr=error_val,
-                    fmt="none", c="k", capsize=3, elinewidth=1)
-
-
+        ax.errorbar(
+            x=x_coord, y=y_coord, yerr=error_val,
+            fmt="none", c="k", capsize=2, elinewidth=0.8
+        )

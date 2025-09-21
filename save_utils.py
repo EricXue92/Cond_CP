@@ -2,25 +2,21 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import os
-from datetime import datetime
 import json
 
 def save_csv(df, filename, save_dir="results"):
     Path(save_dir).mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    name = f"{filename}_{timestamp}.csv"
+    name = f"{filename}.csv"
     save_path = os.path.join(save_dir, name)
     df.to_csv(save_path, index=False)
     print(f"[INFO] Saved: {save_path}")
 
 def save_prediction_sets(results, filepath=None, save_dir="results"):
 
-    # Ensure parent directory exists
     Path(save_dir).mkdir(parents=True, exist_ok=True)
 
     if filepath is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filepath = os.path.join(save_dir, f"prediction_sets_{timestamp}.csv")
+        filepath = os.path.join(save_dir, f"prediction_sets.csv")
     else:
         filepath = Path(filepath)
 

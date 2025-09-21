@@ -5,7 +5,6 @@ from pathlib import Path
 from torchvision.models import vit_b_32, ViT_B_32_Weights
 from copy import deepcopy
 
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def create_rxrx1_model(num_classes=1139, checkpoint_path='checkpoints/rxrx1_seed_0_epoch_best_model.pth'):
@@ -29,9 +28,9 @@ def create_rxrx1_model(num_classes=1139, checkpoint_path='checkpoints/rxrx1_seed
         print(f"Checkpoint not found: {checkpoint_path}")
     # Move to device and set eval mode
     model = model.to(device).eval()
+
     # Create featurizer (model without classifier)
     featurizer = deepcopy(model)
-
     featurizer.fc = nn.Identity()
     featurizer.d_out = feature_dim
     featurizer.eval()
