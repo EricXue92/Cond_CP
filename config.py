@@ -10,13 +10,37 @@ DATASET_CONFIG = {
         "grouping_columns": ["experiment", "cell_type"],
         "features_base_path": "features"  # optional for split datasets
     },
-    "ChestX": {
-        "features_path": "features/ChestX_test.pt",  # still keep for compatibility
-        "metadata_path": "data/ChestXray8/foundation_fair_meta/metadata_attr_lr.csv",
-        "main_group": "age",
-        "additional_features": ["age"],  # metadata columns
-        "grouping_columns": ["sex", "age"],
-        "features_base_path": "features"
+    'ChestX': {
+        'features_base_path': 'features',
+        'metadata_path': 'data/ChestXray8/foundation_fair_meta/metadata_attr_lr.csv',
+        'classifier_path': 'checkpoints/best_model_ChestX.pth',
+        'main_group': 'Patient Age', # Patient Age  Finding Labels
+        'additional_features': ['Patient Gender'], # 'Patient Age'
+        'num_classes': 15,  # Number of diseases in ChestX-ray8
     },
-    # Add more datasets easily...
+    'PadChest': {
+        'features_base_path': 'features',
+        'metadata_path': 'data/PadChest/metadata.csv',
+        'classifier_path': 'checkpoints/best_model_PadChest.pth',
+        'main_group': 'gender',
+        'additional_features': ['age'],
+        'num_classes': 10,
+    },
+    'VinDr': {
+        'features_base_path': 'features',
+        'metadata_path': 'data/VinDr/metadata.csv',
+        'classifier_path': 'checkpoints/best_model_VinDr.pth',
+        'main_group': 'gender',
+        'additional_features': [],
+        'num_classes': 5,
+    },
+    'MIMIC': {
+        'features_base_path': 'features',
+        'metadata_path': 'data/MIMIC/metadata.csv',
+        'classifier_path': 'checkpoints/best_model_MIMIC.pth',
+        'main_group': 'gender',
+        'additional_features': ['age_group'],
+        'num_classes': 14,
+    }
+
 }

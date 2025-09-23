@@ -3,11 +3,7 @@ import torch
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 import pandas as pd
-import os
 import math, random # for seed setting
-import json
-from pathlib import Path
-from datetime import datetime
 
 def set_seed(seed, enforce_determinism=True):
     random.seed(seed)
@@ -40,7 +36,7 @@ def create_train_calib_test_split(n_samples, train_ratio=0.25, calib_ratio=0.25)
         indices[calib_end:]  # test
     )
 
-def encode_labels(data, col="experiment"):
+def categorical_to_numeric(data, col="experiment"):
     """Encode categorical labels as integers starting from 0."""
     if isinstance(data, pd.DataFrame):
         if col is None:
@@ -58,7 +54,6 @@ def one_hot_encode(labels):
     labels = np.asarray(labels, dtype=int)
     if labels.size == 0:
         return np.array([]).reshape(0,0)
-
     n_classes = int(labels.max()) + 1
     return np.eye(n_classes, dtype=float)[labels] # shape (n, K)
 
@@ -114,32 +109,11 @@ def split_threshold(scores_cal, alpha):
     q_idx = math.ceil((n+1)*(1-alpha))/n
     return float(np.quantile(scores_cal, q_idx, method="higher"))
 
-# def build_cov_df(coverages_split, coverages_cond, subgrouping, group_name):
-#     cov_df = pd.DataFrame({
-#         group_name: ['Marginal', 'Marginal'],
-#         'Type': ['Split Conformal', 'Conditional Calibration'],
-#         'Coverage': [np.mean(coverages_split), np.mean(coverages_cond)],
-#         'SampleSize': [len(coverages_split), len(coverages_cond)]
-#     })
-#
-#     subgrouping = pd.Series(subgrouping).reset_index(drop=True)
-#
-#     for i, g in enumerate(np.unique(subgrouping), 1):
-#         mask = (subgrouping == g).to_numpy()
-#         group_size = int(mask.sum())
-#
-#         new_df = pd.DataFrame({
-#             group_name: [i, i],
-#             'Type': ['Split Conformal', 'Conditional Calibration'],
-#             'Coverage': [np.mean(coverages_split[mask]), np.mean(coverages_cond[mask])],
-#             'SampleSize': [group_size, group_size]
-#         })
-#         cov_df = pd.concat([cov_df, new_df], ignore_index=True)
-#
-#     cov_df['error'] = 1.96 * np.sqrt(cov_df['Coverage'] * (1 - cov_df['Coverage']) / cov_df['SampleSize'])
-#
-#     return cov_df
+def expand_phi(phi, y):
+    rows = []
+    for i in range(len(y)):
+        positives = np.where(y[i] == 1)[0]
+        for _ in positives:
+            rows.append(phi[i])
+    return np.array(rows)
 
-
-
-# plot_size_hist_comparison("results/pred_sets_20250910_155005.csv", figsize=(8, 6), save_path="Figures/Size_Histogram.pdf")

@@ -85,13 +85,11 @@ def parse_arguments():
 def main():
     args = parse_arguments()
     datasets_and_names, featurizer, classifier = get_dataset_config(args.dataset)
-
     for dataset, filename in datasets_and_names:
         filepath = os.path.join("features", filename)
         if os.path.exists(filepath):
             print(f"Features already exist: {filepath}")
             continue
-
         print(f"Extracting features for {filename}...")
         features, logits, labels = extract_features(dataset, featurizer, classifier, batch_size=1024)
         save_features(features, logits, labels, filename)

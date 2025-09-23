@@ -4,6 +4,7 @@ from torchvision import models
 from pathlib import Path
 from torchvision.models import vit_b_32, ViT_B_32_Weights
 from copy import deepcopy
+from config import DATASET_CONFIG
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -49,7 +50,7 @@ def git_vit_featurizer():
     model.heads = torch.nn.Identity() # shape: (batch_size, 768)
     return model
 
-class LinearClassifier(nn.Module):
+class ChestXClassifier(nn.Module):
     def __init__(self, in_dim=768, num_classes=15, dropout=0.2):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
@@ -58,7 +59,20 @@ class LinearClassifier(nn.Module):
         x = self.dropout(x)
         return self.fc(x)
 
+def load_classifier(dataset_name):
+    """Load trained classifier for generating logits from features."""
+    config = DATASET_CONFIG.get(dataset_name)
+    if not config:
+        raise ValueError(f"Unknown dataset: {dataset_name}")
+    checkpoint = torch.load(config['classifier_path'], map_location=device)
+    model = ChestXClassifier(num_classes=config.get('num_classes', 15))
 
+    state_dict = checkpoint.get('model_state_dict', checkpoint.get('state_dict', checkpoint))
+    model.load_state_dict(state_dict)
+    model.to(device).eval()
+
+    print(f"[INFO] Loaded classifier for '{dataset_name}' with {config.get('num_classes', 15)} classes")
+    return model
 
 
 

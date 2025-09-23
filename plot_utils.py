@@ -6,7 +6,7 @@ from matplotlib.ticker import MaxNLocator
 import seaborn as sns
 import os
 
-def plot_size_hist_comparison(csv_file, figsize=(8, 6), save_path=None):
+def plot_size_hist_comparison(csv_file, figsize=(7, 4), save_path=None):
     df = pd.read_csv(csv_file)
     split_counts = df["Split_Size"].value_counts().sort_index()
     cond_counts = df["Cond_Size"].value_counts().sort_index()
@@ -15,17 +15,15 @@ def plot_size_hist_comparison(csv_file, figsize=(8, 6), save_path=None):
     split_counts = split_counts.reindex(all_sizes, fill_value=0)
     cond_counts = cond_counts.reindex(all_sizes, fill_value=0)
 
-    sns.set_theme(style="white", context="notebook", font_scale=2)
+    sns.set_theme(style="white", context="notebook")
+    plt.rcParams.update({'font.size': 12})  # readable font size
     fig, ax = plt.subplots(figsize=figsize)
     x = np.arange(len(all_sizes))
     width = 0.4
-
-    ax.bar(x - width / 2, split_counts, width=width, label="Split Size", alpha=0.7)
-    ax.bar(x + width / 2, cond_counts, width=width, label="Cond Size", alpha=0.7)
-
+    ax.bar(x - width / 2, split_counts, width=width, label="Split Size",)
+    ax.bar(x + width / 2, cond_counts, width=width, label="Cond Size",)
     ax.set_xlabel("Set Size")
     ax.set_ylabel("Frequency")
-    ax.set_title("Distribution of Prediction Set Sizes")
     ax.set_xticks(x)
     ax.set_xticklabels(all_sizes)
     ax.legend()
@@ -62,9 +60,9 @@ def plot_loss_curves(results, save_dir="Figures", filename="learning_curve.pdf")
     print(f"Learning curves saved to: {save_path}")
     plt.show()
 
-def plot_miscoverage(main_group='results/rxrx1_experiment.csv', additional_group='results/rxrx1_cell_type.csv',
-                    target_miscoverage=0.1, save_dir="Figures",
-                     save_name="rxrx1_miscoverage_comparison"):
+def plot_miscoverage(main_group, additional_group,
+                    target_miscoverage, save_dir,
+                     save_name):
 
     df_main_group = pd.read_csv(main_group)
     df_additional_group = pd.read_csv(additional_group)
@@ -86,8 +84,7 @@ def plot_miscoverage(main_group='results/rxrx1_experiment.csv', additional_group
     if 'error' in df_additional_group.columns:
         add_error_bars_to_plot(ax1, df_additional_group)
     ax1.legend().remove()
-    ax1.set_title(additional_group_col)
-
+    # ax1.set_title(additional_group_col)
     # Experiments plot
     sns.barplot(data=df_main_group, x=main_group_col, y='Miscoverage', hue='Type', ax=ax2)
     ax2.axhline(target_miscoverage, color='red', linestyle='--', alpha=0.7)
@@ -101,7 +98,6 @@ def plot_miscoverage(main_group='results/rxrx1_experiment.csv', additional_group
     # Save plot
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, f"{save_name}.pdf")
-
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     print(f"Plot saved: {save_path}")
     plt.show()
@@ -122,3 +118,12 @@ def add_error_bars_to_plot(ax, df):
             x=x_coord, y=y_coord, yerr=error_val,
             fmt="none", c="k", capsize=2, elinewidth=0.8
         )
+
+def main():
+    plot_size_hist_comparison("results/pred_sets_groups_features.csv", figsize=(8, 6),
+                              save_path="Figures/Size_Histogram_features.pdf")
+    plot_size_hist_comparison("results/pred_sets_groups_groups.csv", figsize=(8, 6),
+                              save_path="Figures/Size_Histogram_groups.pdf")
+
+if __name__ == "__main__":
+    main()

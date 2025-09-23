@@ -11,6 +11,7 @@ from conditional_coverage import compute_both_coverages, compute_prediction_sets
 import numpy as np
 import argparse
 from config import DATASET_CONFIG
+import time
 
 set_seed(42)
 
@@ -97,11 +98,10 @@ def create_phi(features, metadata, train_idx, calib_idx, test_idx,
         phi_cal, phi_test = computeFeatures(
             train_feature, calib_feature, test_feature, main_train_y, best_c
         )
-
     return phi_cal, phi_test
 
 def run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores,
-                           probs_test, alpha=0.1, dataset_name="rxrx1" ):
+                           probs_test, alpha=0.1, dataset_name="rxrx1", type='groups'):
     # Validate input dimensions
     assert phi_cal.shape[0] == len(cal_scores), "Φ_cal rows must match cal_scores length"
     assert phi_test.shape[0] == len(test_scores), "Φ_test rows must match test_scores length"
@@ -113,11 +113,11 @@ def run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores,
 
     compute_prediction_sets(
         probs_test, q_split, cond_thresholds, dataset_name=dataset_name,
-        saved_dir="results",  base_name="pred_sets"
+        saved_dir="results",  base_name=f"{dataset_name}_pred_sets_{type}"
     )
     return coverages_split, coverages_cond
 
-def save_results(coverages_split, coverages_cond, metadata, test_idx, dataset_name):
+def save_results(coverages_split, coverages_cond, metadata, test_idx, dataset_name, type='groups'):
     config = DATASET_CONFIG.get(dataset_name, {})
     grouping_columns = config.get("grouping_columns", ["group"])
     available_columns = [col for col in grouping_columns if col in metadata.columns]
@@ -130,13 +130,13 @@ def save_results(coverages_split, coverages_cond, metadata, test_idx, dataset_na
             metadata[col].iloc[test_idx],
             group_name=display_name
         )
-        filename = f"{dataset_name}_{col}"
+        filename = f"{dataset_name}_{col}_{type}"
         save_csv(df_cov, filename, "results")
         saved_files.append(f"results/{filename}.csv")
 
-    plot_miscoverage(main_group=saved_files[0], additional_group=saved_files[1],
-                     target_miscoverage=0.1, save_dir="Figures",
-                     save_name=f"{dataset_name}_miscoverage_comparison")
+    time.sleep(1)
+    plot_miscoverage(main_group=saved_files[0], additional_group=saved_files[1], target_miscoverage=0.1,
+                            save_dir="Figures", save_name=f"{dataset_name}_miscoverage_{type}")
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Conformal prediction analysis')
@@ -144,7 +144,7 @@ def parse_arguments():
     parser.add_argument("--dataset", default="rxrx1", choices=list(DATASET_CONFIG.keys()),help="Dataset to analyze")
     parser.add_argument("--use_groups", action="store_true",help="Use group-based design matrix (one-hot experiment)")
     parser.add_argument("--use_features", action="store_true", help="Use regularized feature-based design matrix")
-    parser.add_argument("--add_additional_features", action="store_true",help="Add dataset-specific additional features to design matrix")
+    parser.add_argument("--add_additional_features", action="store_false",help="Add dataset-specific additional features to design matrix")
     parser.add_argument('--features_path', type=str, help="Custom path to features file")
     args = parser.parse_args()
 
@@ -166,10 +166,10 @@ def main():
         use_groups=args.use_groups,
         add_additional_features=args.add_additional_features
     )
-    coverages_split, coverages_cond = run_conformal_analysis(
-        phi_cal, phi_test, cal_scores, test_scores, probs_test, args.alpha
-    )
-    save_results(coverages_split, coverages_cond, metadata, test_idx, args.dataset)
+    type = "features" if args.use_features else "groups"
+    coverages_split, coverages_cond = run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores, probs_test, args.alpha,
+                                                             args.dataset, type)
+    save_results( coverages_split, coverages_cond, metadata, test_idx, dataset_name=args.dataset, type=type)
 
 if __name__ == "__main__":
     main()

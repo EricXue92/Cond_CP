@@ -5,13 +5,25 @@ from tqdm import tqdm
 from conditionalconformal.condconf import setup_cvx_problem_calib
 from utils import split_threshold
 import os
-from datetime import datetime
+
 
 def compute_prediction_sets(probs_test, q_split, cond_thresholds,
-                            saved_dir="results", base_name="pred_sets"):
+                            dataset_name, saved_dir, base_name):
 
     probs_test = np.array(probs_test, dtype=np.float32)
     n_test, K = probs_test.shape
+
+    if np.ndim(q_split) > 0 and len(q_split) > 1:
+        raise ValueError(f"q_split should be scalar for single-label datasets, got shape {q_split.shape}")
+
+    q_split = float(np.squeeze(q_split))
+
+    if np.ndim(cond_thresholds) == 0:
+        cond_thresholds = np.full(n_test, cond_thresholds, dtype=np.float32)
+    else:
+        cond_thresholds = np.array(cond_thresholds, dtype=np.float32)
+        if len(cond_thresholds) != n_test:
+            raise ValueError(f"cond_thresholds length {len(cond_thresholds)} != n_test {n_test}")
 
     split_sets, split_sizes, cond_sets, cond_sizes  = [],[],[],[]
     for i in range(n_test):
@@ -22,6 +34,12 @@ def compute_prediction_sets(probs_test, q_split, cond_thresholds,
         cond_set = np.where(probs_test[i] >= (1.0 - cond_thresholds[i]))[0]
         cond_sets.append(cond_set.tolist())
         cond_sizes.append(len(cond_set))
+
+    split_thresholds = np.full(n_test, round(q_split, 4), dtype=np.float32)
+    print("Lens:", n_test,
+          len(split_sets), len(split_sizes),
+          len(cond_sets), len(cond_sizes),
+          len(split_thresholds), len(cond_thresholds))
 
     df = pd.DataFrame({
         "Index": range(n_test),
@@ -35,8 +53,7 @@ def compute_prediction_sets(probs_test, q_split, cond_thresholds,
 
     # Save with timestamp
     os.makedirs(saved_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{base_name}_{timestamp}.csv"
+    filename = f"{base_name}_{dataset_name}.csv"
     filepath = os.path.join(saved_dir, filename)
     df.to_csv(filepath, index=False)
     print(f"[INFO] Saved: {filepath}")
@@ -76,7 +93,24 @@ def compute_both_coverages(x_cal, scores_cal, x_test, scores_test, alpha):
             cond_thresholds[i] = t_i
             coveragesCond[i] = scores_test[i] <= t_i
         except Exception as e:
-            # fail safe: mark as not covered (or choose a policy)
             coveragesCond[i] = False
     return coveragesSplit, coveragesCond, q_split, cond_thresholds
+
+
+def run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores,
+                           probs_test, alpha, dataset_name):
+
+    assert phi_cal.shape[0] == len(cal_scores), "Φ_cal rows must match cal_scores length"
+    assert phi_test.shape[0] == len(test_scores), "Φ_test rows must match test_scores length"
+    assert phi_cal.shape[1] == phi_test.shape[1], "Φ dimensions must match between calib and test"
+
+    coverages_split, coverages_cond, q_split, cond_thresholds = compute_both_coverages(
+        phi_cal, cal_scores, phi_test, test_scores, alpha
+    )
+
+    compute_prediction_sets(
+        probs_test, q_split, cond_thresholds, dataset_name,
+        "results",  f"{dataset_name}_pred_sets"
+    )
+    return coverages_split, coverages_cond
 
