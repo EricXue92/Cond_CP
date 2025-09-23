@@ -35,7 +35,7 @@ def load_data(dataset_name, features_path=None):
     return features, logits, labels, metadata
 
 def create_phi(features, metadata, train_idx, calib_idx, test_idx,
-                         dataset_name, use_groups=True, add_additional_features=False):
+                         dataset_name, use_groups, add_additional_features):
     config = DATASET_CONFIG.get(dataset_name)
     if not config:
         raise ValueError(f"Unknown dataset: {dataset_name}")
@@ -87,23 +87,22 @@ def create_phi(features, metadata, train_idx, calib_idx, test_idx,
                     print(f"Error processing feature '{feature}': {e}. Skipping.")
                     continue
             print(f"Final design matrix shape: {phi_cal.shape}")
-        else:
+    else:
             # Use regularized features approach
-            train_feature = features[train_idx, :]
-            calib_feature = features[calib_idx, :]
-            test_feature = features[test_idx, :]
+        train_feature = features[train_idx, :]
+        calib_feature = features[calib_idx, :]
+        test_feature = features[test_idx, :]
 
-            best_c = find_best_regularization(train_feature, main_train_y)
-            phi_cal, phi_test = computeFeatures(
-                train_feature, calib_feature, test_feature, main_train_y, best_c
-            )
+        best_c = find_best_regularization(train_feature, main_train_y)
+        phi_cal, phi_test = computeFeatures(
+            train_feature, calib_feature, test_feature, main_train_y, best_c
+        )
 
-        return phi_cal, phi_test
+    return phi_cal, phi_test
 
 def run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores,
                            probs_test, alpha=0.1, dataset_name="rxrx1" ):
     # Validate input dimensions
-
     assert phi_cal.shape[0] == len(cal_scores), "Φ_cal rows must match cal_scores length"
     assert phi_test.shape[0] == len(test_scores), "Φ_test rows must match test_scores length"
     assert phi_cal.shape[1] == phi_test.shape[1], "Φ dimensions must match between calib and test"
@@ -139,32 +138,18 @@ def save_results(coverages_split, coverages_cond, metadata, test_idx, dataset_na
                      target_miscoverage=0.1, save_dir="Figures",
                      save_name=f"{dataset_name}_miscoverage_comparison")
 
-
-
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Conformal prediction analysis')
-
-    parser.add_argument("--alpha", type=float, default=0.1,
-                        help="Miscoverage level (default: 0.1)")
-    parser.add_argument("--dataset", default="rxrx1",
-                        choices=list(DATASET_CONFIG.keys()),help="Dataset to analyze")
-
-    method_group = parser.add_mutually_exclusive_group(required=False)
-    method_group.add_argument("--use_groups", action="store_true",
-                              help="Use group-based design matrix (one-hot experiment)")
-    method_group.add_argument("--use_features", action="store_true",
-                              help="Use regularized feature-based design matrix")
-
-    parser.add_argument("--add_additional_features", action="store_false",
-                        help="Add dataset-specific additional features to design matrix")
-    parser.add_argument('--features_path', type=str,
-                        help="Custom path to features file")
-
+    parser.add_argument("--alpha", type=float, default=0.1, help="Miscoverage level (default: 0.1)")
+    parser.add_argument("--dataset", default="rxrx1", choices=list(DATASET_CONFIG.keys()),help="Dataset to analyze")
+    parser.add_argument("--use_groups", action="store_true",help="Use group-based design matrix (one-hot experiment)")
+    parser.add_argument("--use_features", action="store_true", help="Use regularized feature-based design matrix")
+    parser.add_argument("--add_additional_features", action="store_true",help="Add dataset-specific additional features to design matrix")
+    parser.add_argument('--features_path', type=str, help="Custom path to features file")
     args = parser.parse_args()
 
     if not args.use_groups and not args.use_features:
         args.use_groups = True
-
     return args
 
 def main():
