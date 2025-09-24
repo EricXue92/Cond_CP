@@ -16,6 +16,7 @@ DATASET_CONFIG = {
         'classifier_path': 'checkpoints/best_model_ChestX.pth',
         'main_group': 'Patient Age', # Patient Age  Finding Labels
         'additional_features': ['Patient Gender'], # 'Patient Age'
+        "grouping_columns": ["Patient Age", "Patient Gender"],
         'num_classes': 15,  # Number of diseases in ChestX-ray8
     },
     'PadChest': {
@@ -24,6 +25,7 @@ DATASET_CONFIG = {
         'classifier_path': 'checkpoints/best_model_PadChest.pth',
         'main_group': 'gender',
         'additional_features': ['age'],
+        "grouping_columns": ["***", "***"],
         'num_classes': 10,
     },
     'VinDr': {
@@ -32,6 +34,7 @@ DATASET_CONFIG = {
         'classifier_path': 'checkpoints/best_model_VinDr.pth',
         'main_group': 'gender',
         'additional_features': [],
+        "grouping_columns": ["***", "***"],
         'num_classes': 5,
     },
     'MIMIC': {

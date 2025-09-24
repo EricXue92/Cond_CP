@@ -86,6 +86,7 @@ def add_additional_features(phi_cal, phi_test, metadata, config, cal_size, test_
     additional_features = config.get('additional_features', [])
     if not additional_features:
         return phi_cal, phi_test
+
     cal_meta, test_meta = get_metadata_splits(metadata, cal_size, test_size)
 
     for feature in additional_features:

@@ -111,8 +111,7 @@ def run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores,
         phi_cal, cal_scores, phi_test, test_scores, alpha=alpha
     )
 
-    compute_prediction_sets(
-        probs_test, q_split, cond_thresholds, dataset_name=dataset_name,
+    compute_prediction_sets( probs_test, q_split, cond_thresholds, dataset_name=dataset_name,
         saved_dir="results",  base_name=f"{dataset_name}_pred_sets_{type}"
     )
     return coverages_split, coverages_cond
@@ -134,7 +133,6 @@ def save_results(coverages_split, coverages_cond, metadata, test_idx, dataset_na
         save_csv(df_cov, filename, "results")
         saved_files.append(f"results/{filename}.csv")
 
-    time.sleep(1)
     plot_miscoverage(main_group=saved_files[0], additional_group=saved_files[1], target_miscoverage=0.1,
                             save_dir="Figures", save_name=f"{dataset_name}_miscoverage_{type}")
 
@@ -144,6 +142,7 @@ def parse_arguments():
     parser.add_argument("--dataset", default="rxrx1", choices=list(DATASET_CONFIG.keys()),help="Dataset to analyze")
     parser.add_argument("--use_groups", action="store_true",help="Use group-based design matrix (one-hot experiment)")
     parser.add_argument("--use_features", action="store_true", help="Use regularized feature-based design matrix")
+
     parser.add_argument("--add_additional_features", action="store_false",help="Add dataset-specific additional features to design matrix")
     parser.add_argument('--features_path', type=str, help="Custom path to features file")
     args = parser.parse_args()
@@ -167,9 +166,10 @@ def main():
         add_additional_features=args.add_additional_features
     )
     type = "features" if args.use_features else "groups"
+
     coverages_split, coverages_cond = run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores, probs_test, args.alpha,
                                                              args.dataset, type)
-    save_results( coverages_split, coverages_cond, metadata, test_idx, dataset_name=args.dataset, type=type)
+    save_results(coverages_split, coverages_cond, metadata, test_idx, dataset_name=args.dataset, type=type)
 
 if __name__ == "__main__":
     main()

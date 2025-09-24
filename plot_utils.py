@@ -121,9 +121,11 @@ def add_error_bars_to_plot(ax, df):
 
 def main():
     plot_size_hist_comparison("results/pred_sets_groups_features.csv", figsize=(8, 6),
-                              save_path="Figures/Size_Histogram_features.pdf")
+                              save_path="Figures/rxrx1_size_histogram_features.pdf")
     plot_size_hist_comparison("results/pred_sets_groups_groups.csv", figsize=(8, 6),
-                              save_path="Figures/Size_Histogram_groups.pdf")
+                              save_path="Figures/rxrx1_size_histogram_groups.pdf")
+    plot_size_hist_comparison("results/ChestX_pred_sets_ChestX.csv", figsize=(8, 6),
+                              save_path="Figures/ChestX_size_histogram_groups.pdf")
 
 if __name__ == "__main__":
     main()

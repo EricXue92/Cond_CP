@@ -8,7 +8,7 @@ import os
 
 
 def compute_prediction_sets(probs_test, q_split, cond_thresholds,
-                            dataset_name, saved_dir, base_name):
+                            dataset_name, saved_dir, base_name, analysis_type):
 
     probs_test = np.array(probs_test, dtype=np.float32)
     n_test, K = probs_test.shape
@@ -53,7 +53,7 @@ def compute_prediction_sets(probs_test, q_split, cond_thresholds,
 
     # Save with timestamp
     os.makedirs(saved_dir, exist_ok=True)
-    filename = f"{base_name}_{dataset_name}.csv"
+    filename = f"{base_name}_{dataset_name}_{analysis_type}.csv"
     filepath = os.path.join(saved_dir, filename)
     df.to_csv(filepath, index=False)
     print(f"[INFO] Saved: {filepath}")
@@ -98,7 +98,7 @@ def compute_both_coverages(x_cal, scores_cal, x_test, scores_test, alpha):
 
 
 def run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores,
-                           probs_test, alpha, dataset_name):
+                           probs_test, alpha, dataset_name, analysis_type):
 
     assert phi_cal.shape[0] == len(cal_scores), "Φ_cal rows must match cal_scores length"
     assert phi_test.shape[0] == len(test_scores), "Φ_test rows must match test_scores length"
@@ -110,7 +110,7 @@ def run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores,
 
     compute_prediction_sets(
         probs_test, q_split, cond_thresholds, dataset_name,
-        "results",  f"{dataset_name}_pred_sets"
+        "results",  f"{dataset_name}_pred_sets", analysis_type
     )
     return coverages_split, coverages_cond
 
