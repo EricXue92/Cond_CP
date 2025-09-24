@@ -11,10 +11,10 @@ from conditional_coverage import compute_both_coverages, compute_prediction_sets
 import numpy as np
 import argparse
 from config import DATASET_CONFIG
-import time
 
 set_seed(42)
 
+# Dataset configurations
 def load_data(dataset_name, features_path=None):
     config = DATASET_CONFIG.get(dataset_name)
     if not config:
@@ -30,6 +30,7 @@ def load_data(dataset_name, features_path=None):
     if config["filter_key"]:
         metadata = metadata[metadata[config["filter_key"]] == config["filter_value"]]
     data_length = len(features)
+
     assert len(metadata) == data_length, "Features and metadata size mismatch"
     assert len(logits) == data_length, "Logits and metadata size mismatch"
     assert len(labels) == data_length, "Labels and metadata size mismatch"
@@ -48,7 +49,7 @@ def create_phi(features, metadata, train_idx, calib_idx, test_idx,
         cols = ", ".join(metadata.columns)
         raise ValueError(f"Main group '{main_group}' not in metadata. Available: {cols}")
 
-    # Encode main group
+    # Encode main group "experiment" ( categorical to numeric --> 0,1,2,3,..13 )
     main_group_encoded = categorical_to_numeric(metadata, main_group)
     main_train_y = main_group_encoded[train_idx].astype(int)
     main_cal_y = main_group_encoded[calib_idx].astype(int)
@@ -80,7 +81,7 @@ def create_phi(features, metadata, train_idx, calib_idx, test_idx,
                         feature_cal = one_hot_encode(bins[calib_idx])
                         feature_test = one_hot_encode(bins[test_idx])
                         print(f"Added binned numerical feature '{feature}': {feature_cal.shape[1]} bins")
-                    # Concatenate to design matrix
+                    # # Concatenate to design matrix
                     phi_cal = np.hstack([phi_cal, feature_cal])
                     phi_test = np.hstack([phi_test, feature_test])
 
@@ -89,7 +90,7 @@ def create_phi(features, metadata, train_idx, calib_idx, test_idx,
                     continue
             print(f"Final design matrix shape: {phi_cal.shape}")
     else:
-            # Use regularized features approach
+        # Use regularized features approach
         train_feature = features[train_idx, :]
         calib_feature = features[calib_idx, :]
         test_feature = features[test_idx, :]
@@ -111,7 +112,7 @@ def run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores,
         phi_cal, cal_scores, phi_test, test_scores, alpha=alpha
     )
 
-    compute_prediction_sets( probs_test, q_split, cond_thresholds, dataset_name=dataset_name,
+    compute_prediction_sets( probs_test, q_split, cond_thresholds, dataset_name,
         saved_dir="results",  base_name=f"{dataset_name}_pred_sets_{type}"
     )
     return coverages_split, coverages_cond

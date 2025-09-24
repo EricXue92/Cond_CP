@@ -109,11 +109,4 @@ def split_threshold(scores_cal, alpha):
     q_idx = math.ceil((n+1)*(1-alpha))/n
     return float(np.quantile(scores_cal, q_idx, method="higher"))
 
-def expand_phi(phi, y):
-    rows = []
-    for i in range(len(y)):
-        positives = np.where(y[i] == 1)[0]
-        for _ in positives:
-            rows.append(phi[i])
-    return np.array(rows)
 
