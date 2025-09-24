@@ -304,6 +304,7 @@ def create_phi_split(
     use_groups: bool = True,
     use_logits: bool = False,
     add_additional_features: bool = False,
+    custom_bins = None,
     n_bins: int = 10,
 ):
     """
@@ -329,54 +330,85 @@ def create_phi_split(
     # 2) group-based path
     if use_groups and metadata is not None and cfg.get("main_group"):
         main_group = cfg["main_group"]
-        if main_group not in metadata.columns:
-            raise ValueError(
-                f"Main group '{main_group}' not in metadata. Available: {list(metadata.columns)}"
-            )
+        train_meta, calib_meta, test_meta = get_metadata_splits(metadata, data)
 
-        _, calib_meta, test_meta = get_metadata_splits(metadata, data)
+        if main_group not in calib_meta.columns or main_group not in test_meta.columns:
+            raise ValueError(f"Main group '{main_group}' not found in metadata")
 
-        # Main group encoding
-        if pd.api.types.is_numeric_dtype(calib_meta[main_group]):
-            phi_cal, phi_test, (vmin, vmax) = bin_numeric_to_one_hot(
-                calib_meta[main_group], test_meta[main_group], n_bins=n_bins
-            )
-            print(f"[INFO] Using numeric group '{main_group}': {n_bins} bins, range=({vmin:.2f}, {vmax:.2f})")
+        series_cal = calib_meta[main_group]
+        series_tst = test_meta[main_group]
+
+        # Case 1: numeric + custom bins
+        if pd.api.types.is_numeric_dtype(series_cal) and custom_bins is not None:
+            phi_cal = pd.cut(series_cal, bins=custom_bins, right=False, include_lowest=True).cat.codes
+            phi_tst = pd.cut(series_tst, bins=custom_bins, right=False, include_lowest=True).cat.codes
+
+            phi_cal = one_hot_fixed(phi_cal, len(custom_bins) - 1)
+            phi_tst = one_hot_fixed(phi_tst, len(custom_bins) - 1)
+            print(f"[INFO] Using custom bins for '{main_group}': {custom_bins}")
+
+        # Case 2: numeric + no custom bins
+        elif pd.api.types.is_numeric_dtype(series_cal):
+            combined = pd.concat([series_cal, series_tst], ignore_index=True)
+            binned, bins = pd.qcut(combined, q=n_bins, duplicates="drop", retbins=True)
+            codes = binned.cat.codes.to_numpy()
+            phi_cal = one_hot_fixed(codes[:len(series_cal)], len(bins) - 1)
+            phi_tst = one_hot_fixed(codes[len(series_cal):], len(bins) - 1)
+            print(f"[INFO] Using quantile bins for '{main_group}': {bins}")
+
+        # Case 3: categorical
         else:
-            phi_cal, phi_test, cats = categorical_to_one_hot(
-                calib_meta[main_group], test_meta[main_group]
-            )
+            phi_cal, phi_tst, cats = categorical_to_one_hot(series_cal, series_tst)
             print(f"[INFO] Using categorical group '{main_group}': {len(cats)} categories")
 
-        # Optional additional metadata features
-        if add_additional_features:
-            for feat in (cfg.get("additional_features") or []):
-                if feat not in calib_meta.columns or feat not in test_meta.columns:
-                    print(f"[WARN] Skipping missing feature '{feat}'.")
-                    continue
-                try:
-                    if pd.api.types.is_numeric_dtype(calib_meta[feat]):
-                        f_cal, f_test, _ = bin_numeric_to_one_hot(
-                            calib_meta[feat], test_meta[feat], n_bins=n_bins
-                        )
-                    else:
-                        f_cal, f_test, _ = categorical_to_one_hot(
-                            calib_meta[feat], test_meta[feat]
-                        )
-                    phi_cal = np.hstack([phi_cal, f_cal])
-                    phi_test = np.hstack([phi_test, f_test])
-                except Exception as e:
-                    print(f"[WARN] Feature '{feat}' failed: {e}")
+        return phi_cal, phi_tst
 
-        if phi_cal.shape[1] != phi_test.shape[1]:
-            raise ValueError(f"Φ width mismatch: cal={phi_cal.shape}, test={phi_test.shape}")
-
-        print(f"[INFO] Final Φ shapes: cal={phi_cal.shape}, test={phi_test.shape}")
-        return phi_cal, phi_test
-
-    # 3) fallback: raw features
-    print("[INFO] Using raw features for Φ.")
+    # Default: raw features
     return to_numpy(cal["features"]), to_numpy(tst["features"])
+
+    #
+    #     # Main group encoding
+    #     if pd.api.types.is_numeric_dtype(calib_meta[main_group]) and custom_bins is not None:
+    #
+    #         phi_cal, phi_test, (vmin, vmax) = bin_numeric_to_one_hot(
+    #             calib_meta[main_group], test_meta[main_group], n_bins=n_bins
+    #         )
+    #         print(f"[INFO] Using numeric group '{main_group}': {n_bins} bins, range=({vmin:.2f}, {vmax:.2f})")
+    #     else:
+    #         phi_cal, phi_test, cats = categorical_to_one_hot(
+    #             calib_meta[main_group], test_meta[main_group]
+    #         )
+    #         print(f"[INFO] Using categorical group '{main_group}': {len(cats)} categories")
+    #
+    #     # Optional additional metadata features
+    #     if add_additional_features:
+    #         for feat in (cfg.get("additional_features") or []):
+    #             if feat not in calib_meta.columns or feat not in test_meta.columns:
+    #                 print(f"[WARN] Skipping missing feature '{feat}'.")
+    #                 continue
+    #             try:
+    #                 if pd.api.types.is_numeric_dtype(calib_meta[feat]):
+    #                     f_cal, f_test, _ = bin_numeric_to_one_hot(
+    #                         calib_meta[feat], test_meta[feat], n_bins=n_bins
+    #                     )
+    #                 else:
+    #                     f_cal, f_test, _ = categorical_to_one_hot(
+    #                         calib_meta[feat], test_meta[feat]
+    #                     )
+    #                 phi_cal = np.hstack([phi_cal, f_cal])
+    #                 phi_test = np.hstack([phi_test, f_test])
+    #             except Exception as e:
+    #                 print(f"[WARN] Feature '{feat}' failed: {e}")
+    #
+    #     if phi_cal.shape[1] != phi_test.shape[1]:
+    #         raise ValueError(f"Φ width mismatch: cal={phi_cal.shape}, test={phi_test.shape}")
+    #
+    #     print(f"[INFO] Final Φ shapes: cal={phi_cal.shape}, test={phi_test.shape}")
+    #     return phi_cal, phi_test
+    #
+    # # 3) fallback: raw features
+    # print("[INFO] Using raw features for Φ.")
+    # return to_numpy(cal["features"]), to_numpy(tst["features"])
 
 # Convenience wrappers
 def create_phi_chestx(use_groups: bool = True, use_logits: bool = False, add_features: bool = True):

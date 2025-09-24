@@ -77,22 +77,19 @@ def plot_miscoverage(main_group, additional_group,
     sns.set_theme(style="white", context="notebook", font_scale=2)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20.7, 8.27), sharey='all')
 
-    # Cell types plot
     sns.barplot(data=df_additional_group, x=additional_group_col, y='Miscoverage', hue='Type', ax=ax1)
     ax1.axhline(target_miscoverage, color='red', linestyle='--', alpha=0.7)
 
     if 'error' in df_additional_group.columns:
         add_error_bars_to_plot(ax1, df_additional_group)
     ax1.legend().remove()
-    # ax1.set_title(additional_group_col)
-    # Experiments plot
+
     sns.barplot(data=df_main_group, x=main_group_col, y='Miscoverage', hue='Type', ax=ax2)
     ax2.axhline(target_miscoverage, color='red', linestyle='--', alpha=0.7)
     if 'error' in df_main_group.columns:
         add_error_bars_to_plot(ax2, df_main_group)
     ax2.tick_params(axis='x', labelsize=14)
     ax2.legend(title='', loc='upper center')
-    # ax2.set_title(main_group_col)
     plt.tight_layout()
 
     # Save plot
@@ -120,12 +117,13 @@ def add_error_bars_to_plot(ax, df):
         )
 
 def main():
-    plot_size_hist_comparison("results/pred_sets_groups_features.csv", figsize=(8, 6),
-                              save_path="Figures/rxrx1_size_histogram_features.pdf")
-    plot_size_hist_comparison("results/pred_sets_groups_groups.csv", figsize=(8, 6),
-                              save_path="Figures/rxrx1_size_histogram_groups.pdf")
-    plot_size_hist_comparison("results/ChestX_pred_sets_ChestX.csv", figsize=(8, 6),
-                              save_path="Figures/ChestX_size_histogram_groups.pdf")
+    # plot_size_hist_comparison("results/pred_sets_groups_features.csv", figsize=(8, 6),
+    #                           save_path="Figures/rxrx1_size_histogram_features.pdf")
+    # plot_size_hist_comparison("results/pred_sets_groups_groups.csv", figsize=(8, 6),
+    #                           save_path="Figures/rxrx1_size_histogram_groups.pdf")
+    # plot_size_hist_comparison("results/ChestX_pred_sets_ChestX.csv", figsize=(8, 6),
+    #                           save_path="Figures/ChestX_size_histogram_groups.pdf")
+    pass
 
 if __name__ == "__main__":
     main()
