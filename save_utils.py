@@ -108,17 +108,6 @@ def save_prediction_sets(results, filepath=None, save_dir="results"):
 
 
 def build_cov_df(coverages_split, coverages_cond, subgrouping, group_name):
-    # Convert subgrouping to pandas Series and ensure it's categorical if bins exist
-    subgrouping = pd.Series(subgrouping).reset_index(drop=True)
-
-    # Handle Interval objects from pd.cut (e.g. [0,20), [20,40))
-    if pd.api.types.is_categorical_dtype(subgrouping) or isinstance(subgrouping.iloc[0], pd.Interval):
-        # Convert to ordered string labels
-        categories = [str(cat) for cat in subgrouping.unique()]
-        subgrouping = subgrouping.astype(str)
-    else:
-        categories = sorted(subgrouping.unique())
-
     # Start with overall marginal rows
     cov_df = pd.DataFrame({
         group_name: ['Marginal', 'Marginal'],
@@ -127,20 +116,51 @@ def build_cov_df(coverages_split, coverages_cond, subgrouping, group_name):
         'SampleSize': [len(coverages_split), len(coverages_cond)]
     })
 
-    # Add subgroup rows
-    for g in categories:
-        mask = (subgrouping == g).to_numpy()
+
+    subgrouping = pd.Series(subgrouping).reset_index(drop=True)
+
+    # Handle Interval objects from pd.cut (e.g. [0,20), [20,40))
+    if isinstance(subgrouping.dtype, pd.CategoricalDtype) or isinstance(subgrouping.iloc[0], pd.Interval):
+        # Convert to ordered string labels
+        # categories = [str(cat) for cat in subgrouping.unique()]
+        # subgrouping = subgrouping.astype(str)
+        categories = subgrouping.cat.categories
+        subgrouping = subgrouping.astype(str)
+        ordered_groups = [str(c) for c in categories]  # keep order
+    else:
+        # categories = sorted(subgrouping.unique())
+        # categories = subgrouping.unique()
+        ordered_groups = pd.unique(subgrouping.astype(str))
+
+    # --- Loop in preserved order ---
+    for g in ordered_groups:
+        mask = (subgrouping == str(g)).to_numpy()
         group_size = int(mask.sum())
         if group_size == 0:
             continue
 
         new_df = pd.DataFrame({
-            group_name: [g, g],   # bin label as string
+            group_name: [g, g],
             'Type': ['Split Conformal', 'Conditional Calibration'],
             'Coverage': [np.mean(coverages_split[mask]), np.mean(coverages_cond[mask])],
             'SampleSize': [group_size, group_size]
         })
         cov_df = pd.concat([cov_df, new_df], ignore_index=True)
+
+    # # Add subgroup rows
+    # for g in categories:
+    #     mask = (subgrouping == g).to_numpy()
+    #     group_size = int(mask.sum())
+    #     if group_size == 0:
+    #         continue
+    #
+    #     new_df = pd.DataFrame({
+    #         group_name: [g, g],   # bin label as string
+    #         'Type': ['Split Conformal', 'Conditional Calibration'],
+    #         'Coverage': [np.mean(coverages_split[mask]), np.mean(coverages_cond[mask])],
+    #         'SampleSize': [group_size, group_size]
+    #     })
+    #     cov_df = pd.concat([cov_df, new_df], ignore_index=True)
 
     # Add CI error bars
     cov_df['error'] = 1.96 * np.sqrt(
