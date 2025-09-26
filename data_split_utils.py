@@ -109,8 +109,8 @@ def load_split_data(dataset_name: str, compute_missing_logits: bool = True) -> d
     data["metadata"] = pd.read_csv(meta_path) if meta_path and os.path.exists(meta_path) else None
     return data
 
-def create_phi_split(dataset_name, data, use_groups, use_logits, add_additional_features, custom_bins, n_bins
-):
+def create_phi_split(dataset_name, data, use_groups, use_logits,
+                     add_additional_features, custom_bins, n_bins):
     if data is None:
         data = load_split_data(dataset_name)
 

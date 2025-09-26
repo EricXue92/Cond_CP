@@ -111,11 +111,10 @@ def build_cov_df(coverages_split, coverages_cond, subgrouping, group_name):
     # Start with overall marginal rows
     cov_df = pd.DataFrame({
         group_name: ['Marginal', 'Marginal'],
-        'Type': ['Split Conformal', 'Conditional Calibration'],
+        'Type': ['Split Conformal', 'Conditional Conformal'],
         'Coverage': [np.mean(coverages_split), np.mean(coverages_cond)],
         'SampleSize': [len(coverages_split), len(coverages_cond)]
     })
-
 
     subgrouping = pd.Series(subgrouping).reset_index(drop=True)
 

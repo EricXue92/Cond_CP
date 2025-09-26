@@ -98,7 +98,7 @@ def parse_arguments():
 
 def main():
     args = parse_arguments()
-    custom_bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90] # None
+    custom_bins = [0, 18, 40, 60, 80, 100] # None
 
     run_conditional_analysis(dataset_name=args.dataset, use_groups=args.use_groups,
                             use_logits=args.use_logits, add_features=args.add_features,

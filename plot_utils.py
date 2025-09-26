@@ -190,9 +190,9 @@ def add_error_bars_to_plot(ax, df):
         )
 
 def main():
-    plot_miscoverage("results/ChestX_patient_age_groups.csv",
-                    "results/ChestX_patient_gender_groups.csv",
-                    target_miscoverage=0.1, save_dir="Figures",save_name="ChestX_miscoverage_groups"
+    plot_miscoverage("results/ChestX_patient_age_logits.csv",
+                    "results/ChestX_patient_gender_logits.csv",
+                    target_miscoverage=0.1, save_dir="Figures",save_name="ChestX_miscoverage_logits"
                      )
     # plot_size_hist_comparison("results/pred_sets_groups_features.csv", figsize=(8, 6),
     #                           save_path="Figures/rxrx1_size_histogram_features.pdf")
