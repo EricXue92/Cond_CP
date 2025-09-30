@@ -1,6 +1,6 @@
 import torch
 import os
-from model_builder import LinearClassifier
+from model_builder import ChestXClassifier
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -27,7 +27,7 @@ def load_best_model(checkpoint_path, device):
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location=device)
     # Create model with saved configuration
-    model = LinearClassifier(
+    model = ChestXClassifier(
         in_dim=checkpoint['model_config']['in_dim'],
         num_classes=checkpoint['model_config']['num_classes'],
         dropout=checkpoint['model_config']['dropout']

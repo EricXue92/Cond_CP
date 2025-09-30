@@ -5,18 +5,20 @@ DATASET_CONFIG = {
         "metadata_path": "data/rxrx1_v1.0/metadata.csv",
         "filter_key": "dataset",
         "filter_value": "test",
-        "main_group": "cell_type", #cell_type
-        "additional_features": ["experiment"],  # metadata columns experiment
-        "grouping_columns": ["experiment", "cell_type"],
+        "group_col": "experiment", #cell_type experiment
+        "additional_col": ["cell_type"],  # cell_type
+        "group_cols": ["experiment", "cell_type"],
         "features_base_path": "features"  # optional for split datasets
     },
+
+
     'ChestX': {
         'features_base_path': 'features',
         'metadata_path': 'data/ChestXray8/foundation_fair_meta/metadata_attr_lr.csv',
         'classifier_path': 'checkpoints/best_model_ChestX.pth',
-        'main_group': 'Patient Gender', # Patient Age  Finding Labels
-        'additional_features': ['Patient Age'], # 'Patient Age'
-        "grouping_columns": ["Patient Age", "Patient Gender"],
+        'main_group_col': 'Patient Age', # Patient Age  Finding Labels
+        'additional_col': ['Patient Gender'], # 'Patient Age'
+        "group_cols": ["Patient Age", "Patient Gender"],
         'num_classes': 15,  # Number of diseases in ChestX-ray8
     },
     'PadChest': {

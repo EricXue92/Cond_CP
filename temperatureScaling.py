@@ -12,45 +12,34 @@ class CalibrationDataset(Dataset):
     def __getitem__(self, i):
         return self.logits[i], self.labels[i]
 
-def temperature_scaling(logits, labels, max_iters=1000, lr=0.1, tolerance=1e-4, batch_size=128):
+# 500,
+def temperature_scaling(logits, labels, max_iters=5, lr=0.01, tolerance=1e-4, batch_size=128):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loader = DataLoader(
-        CalibrationDataset(logits, labels),
-        batch_size=batch_size, shuffle=True,
-        pin_memory=False
-    )
+    loader = DataLoader(CalibrationDataset(logits, labels), batch_size=batch_size, shuffle=True)
 
-    if labels.dim() > 1 and labels.shape[1]>1:
-        criterion = nn.BCEWithLogitsLoss()
-        is_multilabel = True
-        print(f"Using BCEWithLogitsLoss for multi-label classification ({labels.shape[1]} classes)")
-    else:
-        criterion = nn.CrossEntropyLoss()
-        is_multilabel = False
-        print(f"Using CrossEntropyLoss for single-label classification")
+    multilabel_flag = labels.dim() > 1 and labels.shape[1] > 1
+    criterion = nn.BCEWithLogitsLoss() if multilabel_flag else nn.CrossEntropyLoss()
 
-    T = nn.Parameter( torch.tensor([1.3], dtype=torch.float32, device=device))
-    opt = optim.SGD([T], lr=lr)
+    log_T = nn.Parameter(torch.zeros(1, device=device))  # T = exp(log_T), ensures T > 0
+    opt = optim.AdamW([log_T], lr=lr)
 
-    for _ in range(max_iters):
-        T_old = float(T.item())
-        for batch_logits, batch_labels in loader:
-            # Move each minibatch to SAME device as T
-            batch_logits = batch_logits.to(device, non_blocking=True)
-            batch_labels = batch_labels.to(device, non_blocking=True)
-
-            scaled_logits = batch_logits / T
-            if is_multilabel:
-                batch_labels = batch_labels.float()
-                loss = criterion(scaled_logits, batch_labels)
+    for i in range(max_iters):
+        T_old = float(torch.exp(log_T).item())
+        for x, y in loader:
+            x = x.to(device)
+            y = y.to(device)
+            T = torch.exp(log_T)
+            scaled_logits = x / T
+            if multilabel_flag:
+                loss = criterion(scaled_logits, y.float())
             else:
-                batch_labels = batch_labels.long()
-                loss = criterion(scaled_logits, batch_labels)
+                loss = criterion(scaled_logits, y.long())
+            opt.zero_grad()
             loss.backward()
             opt.step()
-            opt.zero_grad()
-        if abs(T_old  - T.item()) < tolerance:
-            print(f"Converged after {_+1} iterations, T = {T.item():.4f}")
+        T_new = float(torch.exp(log_T).item())
+        # origin: [0.9360]
+        if abs(T_new - T_old) < tolerance:
+            print(f"Converged after {i+1} iterations, T = {T_new:.4f}")
             break
-    print(f"Reached max iterations ({max_iters}), T = {T.item():.4f}")
-    return T
+    return float(torch.exp(log_T).item())

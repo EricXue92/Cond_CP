@@ -8,6 +8,13 @@ from config import DATASET_CONFIG
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+class LogisticRegression(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+        self.linear = nn.Linear(in_dim, out_dim)
+    def forward(self, x):
+        return self.linear(x)  # logits
+
 def create_rxrx1_model(num_classes=1139, checkpoint_path='checkpoints/rxrx1_seed_0_epoch_best_model.pth'):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = models.resnet50()
@@ -18,7 +25,6 @@ def create_rxrx1_model(num_classes=1139, checkpoint_path='checkpoints/rxrx1_seed
     if Path(checkpoint_path).exists():
         try:
             checkpoint = torch.load(checkpoint_path, map_location=device)
-            # Remove 'model.' prefix from keys if present
             state_dict = {k[6:] if k.startswith('model.') else k: v
                          for k, v in checkpoint["algorithm"].items()}
             model.load_state_dict(state_dict)
@@ -27,17 +33,17 @@ def create_rxrx1_model(num_classes=1139, checkpoint_path='checkpoints/rxrx1_seed
             print(f"Failed to load checkpoint: {e}")
     else:
         print(f"Checkpoint not found: {checkpoint_path}")
-    # Move to device and set eval mode
+
     model = model.to(device).eval()
 
     # Create featurizer (model without classifier)
     featurizer = deepcopy(model)
     featurizer.fc = nn.Identity()
     featurizer.d_out = feature_dim
+
     featurizer.eval()
 
-    # Extract classifier
-    classifier = model.fc.eval()
+    classifier = deepcopy(model.fc)
     return model, featurizer, classifier
 
 def git_vit_featurizer():
@@ -46,7 +52,6 @@ def git_vit_featurizer():
     model.eval()
     for p in model.parameters():
         p.requires_grad = False
-    # Remove classification head -> outputs 768-dim embeddings
     model.heads = torch.nn.Identity() # shape: (batch_size, 768)
     return model
 
@@ -73,9 +78,4 @@ def load_classifier(dataset_name):
 
     print(f"[INFO] Loaded classifier for '{dataset_name}' with {config.get('num_classes', 15)} classes")
     return model
-
-
-
-
-
 

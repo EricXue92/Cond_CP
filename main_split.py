@@ -12,10 +12,10 @@ import pandas as pd
 set_seed(42)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def save_results(coverages_split, coverages_cond, metadata, test_labels, dataset_name,
+def save_and_plot(coverages_split, coverages_cond, metadata, test_labels, dataset_name,
                  analysis_type, custom_bins, n_bins=10):
     config = DATASET_CONFIG.get(dataset_name, {})
-    grouping_columns = config.get("grouping_columns", [])
+    grouping_columns = config.get("group_col", [])
     available_cols = [col for col in grouping_columns if col in metadata.columns]
     saved_files = []
 
@@ -26,12 +26,14 @@ def save_results(coverages_split, coverages_cond, metadata, test_labels, dataset
         test_mask = metadata.index >= (len(metadata) - n_test)
 
     for col in available_cols:
+
+        # Format column name for saving
         save_name = col.lower().replace(" ", "_")
+
         values = metadata.loc[test_mask, col]
         if pd.api.types.is_numeric_dtype(values) and custom_bins is not None:
             binned = pd.cut(values, bins=custom_bins, right=False, include_lowest=True)
             group_values = binned.apply(lambda x: f"[{x.left:.0f},{x.right:.0f}]").astype(str)
-            # group_values = pd.cut(values, bins=custom_bins, right=False, include_lowest=True).astype(str)
             print(f"[INFO] Using custom bins for '{col}': {custom_bins}")
 
         elif pd.api.types.is_numeric_dtype(values) and custom_bins is None:
@@ -42,7 +44,7 @@ def save_results(coverages_split, coverages_cond, metadata, test_labels, dataset
             group_values = values.astype(str)
 
         df_cov = build_cov_df(
-            coverages_split, coverages_cond, group_values, group_name=save_name
+            coverages_split, coverages_cond, group_values, group_name=col
         )
         filename = f"{dataset_name}_{save_name}_{analysis_type}"
         save_csv(df_cov, filename, "results")
@@ -51,7 +53,7 @@ def save_results(coverages_split, coverages_cond, metadata, test_labels, dataset
     plot_miscoverage(main_group=saved_files[0], additional_group=saved_files[1], target_miscoverage=0.1,
                             save_dir="Figures", save_name=f"{dataset_name}_miscoverage_{analysis_type}")
 
-def run_conditional_analysis(dataset_name, use_groups, use_logits, add_features, custom_bins, n_bins, alpha=0.1):
+def run_analysis(dataset_name, use_groups, use_logits, add_features, custom_bins, n_bins, alpha=0.1):
 
     analysis_type = "groups" if use_groups else "logits"
     data = load_split_data(dataset_name, compute_missing_logits=True)
@@ -77,9 +79,9 @@ def run_conditional_analysis(dataset_name, use_groups, use_logits, add_features,
 
     coverages_split, coverages_cond = run_conformal_analysis(
         phi_cal, phi_test, cal_scores, test_scores, probs_test,
-        alpha=alpha, dataset_name=dataset_name, analysis_type=analysis_type)
+        alpha=alpha, dataset_name=dataset_name, group_col="age")
 
-    save_results(coverages_split, coverages_cond, metadata, test_labels, dataset_name,  analysis_type, custom_bins)
+    save_and_plot(coverages_split, coverages_cond, metadata, test_labels, dataset_name,  analysis_type, custom_bins)
     return coverages_split, coverages_cond
 
 def parse_arguments():
@@ -87,20 +89,18 @@ def parse_arguments():
     parser.add_argument("--dataset", default="ChestX", choices=["ChestX", "PadChest", "VinDr", "MIMIC"],help="Split dataset to analyze")
     parser.add_argument("--alpha", type=float, default=0.1, help="Miscoverage level (default: 0.1)")
     parser.add_argument("--use_groups", action="store_true", help="Use group-based design matrix")
-    parser.add_argument("--use_logits", action="store_true", help="Use classifier logits as design matrix")
-
+    parser.add_argument("--use_logits", action="store_false", help="Use classifier logits as design matrix")
     parser.add_argument("--add_features", action="store_false", help="Add additional metadata features to design matrix")
     args = parser.parse_args()
-
     if sum([args.use_groups, args.use_logits]) != 1:
         parser.error("Please specify exactly one of --use_groups or --use_logits.")
     return args
 
 def main():
     args = parse_arguments()
-    custom_bins = [0, 18, 40, 60, 80, 100] # None
+    custom_bins = [0, 18, 30, 40, 50,  60, 70, 80, 90, 100] # None
 
-    run_conditional_analysis(dataset_name=args.dataset, use_groups=args.use_groups,
+    run_analysis(dataset_name=args.dataset, use_groups=args.use_groups,
                             use_logits=args.use_logits, add_features=args.add_features,
                              custom_bins=custom_bins,
                              n_bins=10,

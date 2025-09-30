@@ -60,46 +60,6 @@ def plot_loss_curves(results, save_dir="Figures", filename="learning_curve.pdf")
     print(f"Learning curves saved to: {save_path}")
     plt.show()
 
-# def plot_miscoverage(main_group, additional_group,
-#                     target_miscoverage, save_dir,
-#                      save_name):
-#
-#     df_main_group = pd.read_csv(main_group)
-#     df_additional_group = pd.read_csv(additional_group)
-#
-#     df_additional_group['Miscoverage'] = 1 - df_additional_group['Coverage']
-#     df_main_group['Miscoverage'] = 1 - df_main_group['Coverage']
-#
-#     standard_cols = {'Type', 'Coverage', 'SampleSize', 'error', 'Miscoverage'}
-#     additional_group_col = [col for col in df_additional_group.columns if col not in standard_cols][0]
-#     main_group_col = [col for col in df_main_group.columns if col not in standard_cols][0]
-#
-#     sns.set_theme(style="white", context="notebook", font_scale=2)
-#     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20.7, 8.27), sharey='all')
-#
-#     sns.barplot(data=df_additional_group, x=additional_group_col, y='Miscoverage', hue='Type', ax=ax1)
-#     ax1.axhline(target_miscoverage, color='red', linestyle='--', alpha=0.7)
-#
-#     if 'error' in df_additional_group.columns:
-#         add_error_bars_to_plot(ax1, df_additional_group)
-#     ax1.legend().remove()
-#
-#     sns.barplot(data=df_main_group, x=main_group_col, y='Miscoverage', hue='Type', ax=ax2)
-#     ax2.axhline(target_miscoverage, color='red', linestyle='--', alpha=0.7)
-#     if 'error' in df_main_group.columns:
-#         add_error_bars_to_plot(ax2, df_main_group)
-#     ax2.tick_params(axis='x', labelsize=14)
-#     ax2.legend(title='', loc='upper center')
-#     plt.tight_layout()
-#
-#     # Save plot
-#     os.makedirs(save_dir, exist_ok=True)
-#     save_path = os.path.join(save_dir, f"{save_name}.pdf")
-#     fig.savefig(save_path, format="pdf", bbox_inches="tight")
-#     print(f"Plot saved: {save_path}")
-#     plt.show()
-#     return fig, (ax1, ax2)
-
 def plot_miscoverage(main_group, additional_group,
                      target_miscoverage, save_dir,
                      save_name):
@@ -119,25 +79,16 @@ def plot_miscoverage(main_group, additional_group,
 
     # ---- Fix ordering of categorical bins ----
     def order_bins(df, col):
-        # Ensure everything is string
         df[col] = df[col].astype(str)
-
-        # Separate out Marginal
         bin_labels = [x for x in df[col].unique() if x != "Marginal"]
-
         # Sort bin labels in natural order (remove brackets then sort by numbers)
         def parse_bin(label):
             # e.g. "[0,20)" -> (0,20)
             nums = [float(s) for s in label.replace("[", "").replace(")", "").split(",") if
                     s.strip().replace('.', '', 1).isdigit()]
             return nums[0] if nums else float("inf")
-
         bin_labels_sorted = sorted(bin_labels, key=parse_bin)
-
-        # Put Marginal first
         ordered_labels = ["Marginal"] + bin_labels_sorted
-
-        # Cast column to categorical with this order
         df[col] = pd.Categorical(df[col], categories=ordered_labels, ordered=True)
         return df
 
@@ -190,16 +141,16 @@ def add_error_bars_to_plot(ax, df):
         )
 
 def main():
-    plot_miscoverage("results/ChestX_patient_age_logits.csv",
-                    "results/ChestX_patient_gender_logits.csv",
-                    target_miscoverage=0.1, save_dir="Figures",save_name="ChestX_miscoverage_logits"
-                     )
+    # plot_miscoverage("results/ChestX_patient_age_logits.csv",
+    #                 "results/ChestX_patient_gender_logits.csv",
+    #                 target_miscoverage=0.1, save_dir="Figures",save_name="ChestX_miscoverage_logits"
+    #                  )
     # plot_size_hist_comparison("results/pred_sets_groups_features.csv", figsize=(8, 6),
     #                           save_path="Figures/rxrx1_size_histogram_features.pdf")
     # plot_size_hist_comparison("results/pred_sets_groups_groups.csv", figsize=(8, 6),
     #                           save_path="Figures/rxrx1_size_histogram_groups.pdf")
-    # plot_size_hist_comparison("results/ChestX_pred_sets_ChestX.csv", figsize=(8, 6),
-    #                           save_path="Figures/ChestX_size_histogram_groups.pdf")
+    plot_size_hist_comparison("results/rxrx1_pred_sets.csv", figsize=(8, 6),
+                              save_path="Figures/rxrx1_size_histogram_groups.pdf")
     pass
 
 if __name__ == "__main__":

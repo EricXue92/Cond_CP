@@ -5,25 +5,24 @@ from torch.utils.data import TensorDataset,DataLoader
 from torchvision import transforms
 from feature_io import load_features
 
-def create_rxrx1_transform():
+def create_normalized_transform():
   """ Per-image, per-channel standardization for RxRx1. """
   standardize = lambda x: (x - x.mean(dim=(1, 2), keepdim=True)) / torch.clamp(x.std(dim=(1, 2),
                                                                                      keepdim=True), min=1e-8)
   return transforms.Compose([transforms.ToTensor(), transforms.Lambda(standardize)])
 
-def load_rxrx1_test_data(seed=1):
+def load_rxrx1_test_data():
     # Load dataset and test subset
-    transform = create_rxrx1_transform()
+    transform = create_normalized_transform()
     dataset = get_dataset(dataset="rxrx1", download=False)
     test_data = dataset.get_subset("test", transform=transform)
-
     metadata = pd.read_csv('data/rxrx1_v1.0/metadata.csv')
     test_metadata = metadata[metadata['dataset'] == 'test']
-
     print("Got test dataset with size:", len(test_data))
     return test_data, test_metadata
 
 
+# Load features and labels from .pt file and create DataLoader
 def load_dataloaders(train_path, calib_path, test_path, batch_size=128):
 
     train_features, _, train_labels = load_features(train_path)

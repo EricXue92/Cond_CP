@@ -3,13 +3,13 @@ import torch
 import argparse
 from torch.utils.data import DataLoader
 from torchvision import transforms
-
 from data_setup import ChestXray
 from model_builder import git_vit_featurizer,create_rxrx1_model
 from data_utils import load_rxrx1_test_data
 from feature_io import save_features
+from data_utils import create_normalized_transform
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def extract_features(dataset, featurizer, classifier=None, batch_size=128):
@@ -51,20 +51,21 @@ def extract_features(dataset, featurizer, classifier=None, batch_size=128):
     return features,logits,labels
 
 def get_dataset_config(dataset_name):
-
     if dataset_name == "rxrx1":
         test_images, _ = load_rxrx1_test_data()
         model, featurizer, classifier = create_rxrx1_model()
         return [(test_images, "rxrx1_features.pt")], featurizer, classifier
-
     elif dataset_name == "ChestX":
-        transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=(0.485, 0.456, 0.406),
-                                 std=(0.229, 0.224, 0.225))
-        ])
 
+
+        # transform = transforms.Compose([
+        #     transforms.Resize((224, 224)),
+        #     transforms.ToTensor(),
+        #     transforms.Normalize(mean=(0.485, 0.456, 0.406),
+        #                          std=(0.229, 0.224, 0.225))
+        # ])
+
+        transform = create_normalized_transform()
         metadata_csv = "data/ChestXray8/foundation_fair_meta/metadata_attr_lr.csv"
         datasets = [
             (ChestXray(metadata_csv, split=0, transform=transform), "ChestX_train.pt"),
@@ -84,6 +85,7 @@ def parse_arguments():
 
 def main():
     args = parse_arguments()
+
     datasets_and_names, featurizer, classifier = get_dataset_config(args.dataset)
     for dataset, filename in datasets_and_names:
         filepath = os.path.join("features", filename)

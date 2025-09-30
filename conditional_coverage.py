@@ -8,10 +8,10 @@ import os
 
 
 def compute_prediction_sets(probs_test, q_split, cond_thresholds,
-                            dataset_name, saved_dir, base_name, analysis_type):
+                            saved_dir, base_name):
 
     probs_test = np.array(probs_test, dtype=np.float32)
-    n_test, K = probs_test.shape
+    n_test, k = probs_test.shape
 
     if np.ndim(q_split) > 0 and len(q_split) > 1:
         raise ValueError(f"q_split should be scalar for single-label datasets, got shape {q_split.shape}")
@@ -51,15 +51,14 @@ def compute_prediction_sets(probs_test, q_split, cond_thresholds,
         "Cond_Threshold": np.round(cond_thresholds, 4)
     })
 
-    # Save with timestamp
     os.makedirs(saved_dir, exist_ok=True)
-    filename = f"{base_name}_{dataset_name}_{analysis_type}.csv"
+    filename = f"{base_name}.csv"
     filepath = os.path.join(saved_dir, filename)
     df.to_csv(filepath, index=False)
     print(f"[INFO] Saved: {filepath}")
     return
 
-# Xcal and XTest are the Phi(x) features for calibration set and test set respectively
+# x_cal and x_Test are the Phi(x) features for calibration set and test set respectively
 def compute_both_coverages(x_cal, scores_cal, x_test, scores_test, alpha):
 
     x_cal, x_test = np.asarray(x_cal, dtype=float), np.asarray(x_test, dtype=float)
@@ -68,10 +67,10 @@ def compute_both_coverages(x_cal, scores_cal, x_test, scores_test, alpha):
     cond_thresholds = np.zeros(len(x_test))
     # split coverage
     q_split = split_threshold(scores_cal, alpha)
-    coveragesSplit = scores_test <= q_split
+    coverage_split = scores_test <= q_split
 
     #conditional coverage (finite-basis; no RKHS)
-    coveragesCond = np.zeros(len(x_test), dtype=bool)
+    coverage_cond = np.zeros(len(x_test), dtype=bool)
 
     # Add the test point’s score onto the calibration scores
     for i in tqdm(range(len(x_test))):
@@ -91,14 +90,15 @@ def compute_both_coverages(x_cal, scores_cal, x_test, scores_test, alpha):
             beta = np.asarray(prob.constraints[2].dual_value).ravel() # shape (d, )
             t_i = float(x_test[i,:] @ beta)   # per-x threshold t(x)= Phi(x_i)^T beta
             cond_thresholds[i] = t_i
-            coveragesCond[i] = scores_test[i] <= t_i
-        except Exception as e:
-            coveragesCond[i] = False
-    return coveragesSplit, coveragesCond, q_split, cond_thresholds
+            coverage_cond[i] = scores_test[i] <= t_i
+
+        except (cp.error.SolverError, RuntimeError, ValueError):
+            coverage_cond[i] = False
+    return coverage_split, coverage_cond, q_split, cond_thresholds
 
 
 def run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores,
-                           probs_test, alpha, dataset_name, analysis_type):
+                           probs_test, alpha, dataset_name, group_col):
 
     assert phi_cal.shape[0] == len(cal_scores), "Φ_cal rows must match cal_scores length"
     assert phi_test.shape[0] == len(test_scores), "Φ_test rows must match test_scores length"
@@ -110,7 +110,7 @@ def run_conformal_analysis(phi_cal, phi_test, cal_scores, test_scores,
 
     compute_prediction_sets(
         probs_test, q_split, cond_thresholds, dataset_name,
-        "results",  f"{dataset_name}_pred_sets", analysis_type
+        "results",  f"{dataset_name}_pred_sets", group_col
     )
     return coverages_split, coverages_cond
 
