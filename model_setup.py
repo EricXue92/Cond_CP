@@ -1,11 +1,9 @@
 import torch
 import os
-from model_builder import ChestXClassifier
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def save_checkpoint(model, optimizer, epoch, val_loss, val_acc, filepath):
-    """Save model checkpoint with training state"""
     checkpoint = {
         'epoch': epoch,
         'model_state_dict': model.state_dict(),

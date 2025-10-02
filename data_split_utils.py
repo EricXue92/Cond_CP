@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from model_builder import load_classifier
 from feature_io import load_features
-from config import DATASET_CONFIG
+from data_config import DATASET_CONFIG
 from scipy.special import softmax
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

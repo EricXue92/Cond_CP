@@ -2,21 +2,12 @@ import torch
 import torch.nn as nn
 from torchvision import models
 from pathlib import Path
-from torchvision.models import vit_b_32, ViT_B_32_Weights
 from copy import deepcopy
-from config import DATASET_CONFIG
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-class LogisticRegression(nn.Module):
-    def __init__(self, in_dim, out_dim):
-        super().__init__()
-        self.linear = nn.Linear(in_dim, out_dim)
-    def forward(self, x):
-        return self.linear(x)  # logits
-
-def create_rxrx1_model(num_classes=1139, checkpoint_path='checkpoints/rxrx1_seed_0_epoch_best_model.pth'):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+def create_rxrx1_model(num_classes=1139,
+                       checkpoint_path='checkpoints/rxrx1_seed_0_epoch_best_model.pth'):
     model = models.resnet50()
     feature_dim = model.fc.in_features # 2048 for ResNet-50
     model.fc = nn.Linear(feature_dim, num_classes) # (2048, 1139)
@@ -36,46 +27,27 @@ def create_rxrx1_model(num_classes=1139, checkpoint_path='checkpoints/rxrx1_seed
 
     model = model.to(device).eval()
 
-    # Create featurizer (model without classifier)
     featurizer = deepcopy(model)
     featurizer.fc = nn.Identity()
     featurizer.d_out = feature_dim
-
     featurizer.eval()
-
     classifier = deepcopy(model.fc)
     return model, featurizer, classifier
+#
+# # https://github.com/mlmed/torchxrayvision
+# # https://mlmed.org/torchxrayvision/datasets.html#torchxrayvision.datasets.NIH_Dataset
+#
 
-def git_vit_featurizer():
-    weights = ViT_B_32_Weights.DEFAULT
-    model = vit_b_32(weights=weights).to(device)
-    model.eval()
-    for p in model.parameters():
-        p.requires_grad = False
-    model.heads = torch.nn.Identity() # shape: (batch_size, 768)
-    return model
-
-class ChestXClassifier(nn.Module):
-    def __init__(self, in_dim=768, num_classes=15, dropout=0.2):
+class DenseNetFeaturizer(torch.nn.Module):
+    def __init__(self, base):
         super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
-        self.fc = nn.Linear(in_dim, num_classes)
+        self.features = base.features
+        self.pool = torch.nn.AdaptiveAvgPool2d((1, 1))
+        self.d_out = 1024
     def forward(self, x):
-        x = self.dropout(x)
-        return self.fc(x)
+        x = self.features(x)
+        x = self.pool(x)
+        return x.view(x.size(0), -1)
 
-def load_classifier(dataset_name):
-    """Load trained classifier for generating logits from features."""
-    config = DATASET_CONFIG.get(dataset_name)
-    if not config:
-        raise ValueError(f"Unknown dataset: {dataset_name}")
-    checkpoint = torch.load(config['classifier_path'], map_location=device)
-    model = ChestXClassifier(num_classes=config.get('num_classes', 15))
 
-    state_dict = checkpoint.get('model_state_dict', checkpoint.get('state_dict', checkpoint))
-    model.load_state_dict(state_dict)
-    model.to(device).eval()
-
-    print(f"[INFO] Loaded classifier for '{dataset_name}' with {config.get('num_classes', 15)} classes")
-    return model
 

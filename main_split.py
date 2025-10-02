@@ -6,7 +6,7 @@ from plot_utils import plot_miscoverage
 from data_split_utils import load_split_data, create_phi_split
 from conditional_coverage import run_conformal_analysis
 import argparse
-from config import DATASET_CONFIG
+from data_config import DATASET_CONFIG
 import pandas as pd
 
 set_seed(42)

@@ -9,19 +9,30 @@ from save_utils import save_csv, build_cov_df
 from feature_io import load_features
 from conformal_scores import compute_conformity_scores
 from conditional_coverage import compute_both_coverages, compute_prediction_sets
-from config import DATASET_CONFIG
 
 set_seed(42)
+
+DATASET_CONFIG = {
+    "rxrx1": {
+        "features_path": "features/rxrx1_features.pt",
+        "metadata_path": "data/rxrx1_v1.0/metadata.csv",
+        "filter_key": "dataset",
+        "filter_value": "test",
+        "group_col": "experiment", #cell_type experiment
+        "additional_col": ["cell_type"],  # cell_type
+        "group_cols": ["experiment", "cell_type"],
+        "features_base_path": "features"
+    },
+}
 
 def load_dataset(dataset_name, features_path=None):
     config = DATASET_CONFIG.get(dataset_name)
     if not config:
         raise ValueError(f"Unknown dataset: {dataset_name}")
-
     features_file = features_path or config["features_path"]
     if not os.path.exists(features_file):
-        raise FileNotFoundError(f"Features file not found: `{features_file}`")
-    features, logits, labels = load_features(features_file)
+        raise FileNotFoundError(f"Features file not found: {features_file} ")
+    features, logits, labels, _ = load_features(features_file)
     metadata = pd.read_csv(config["metadata_path"])
     if config["filter_key"]:
         metadata = metadata[metadata[config["filter_key"]] == config["filter_value"]]
@@ -102,6 +113,7 @@ def parse_arguments():
 
 def main():
     args = parse_arguments()
+
 
     features, logits, labels, metadata = load_dataset(args.dataset_name, args.features_path)
     train_idx, calib_idx, test_idx = create_train_calib_test_split(len(features))

@@ -7,29 +7,57 @@ from plot_utils import plot_miscoverage
 from data_split_utils import compute_logits
 from conditional_coverage import compute_both_coverages, compute_prediction_sets
 import argparse
-from config import DATASET_CONFIG
+# from config import DATASET_CONFIG
 import pandas as pd
 import numpy as np
-from model_builder import load_classifier, LogisticRegression
+from model_builder import load_classifier
 from feature_io import load_features
 
 set_seed(42)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+DATASET_CONFIG = {
+    "rxrx1": {
+        "features_path": "data/rxrx1_v1.0/rxrx1_features.pt",
+        "metadata_path": "data/rxrx1_v1.0/metadata.csv",
+        "filter_key": "dataset",
+        "filter_value": "test",
+        "group_col": "experiment", #cell_type experiment
+        "additional_col": ["cell_type"],  # cell_type
+        "group_cols": ["experiment", "cell_type"],
+        "features_base_path": "features"  # optional for split datasets
+    },
 
-def load_split_dataset(dataset_name, logits_flag=True):
-    """Load split features/logits/labels + metadata for a dataset."""
+    'ChestX': {
+        'features_base_path': 'features',
+        'metadata_path': 'data/ChestXray8/foundation_fair_meta/metadata_attr_lr.csv',
+        'classifier_path': 'checkpoints/best_model_ChestX.pth',
+        'main_group_col': 'Patient Age', # Patient Age  Finding Labels
+        'additional_col': ['Patient Gender'], # 'Patient Age'
+        "group_cols": ["Patient Age", "Patient Gender"],
+        'num_classes': 15,  # Number of diseases in ChestX-ray8
+    },
+    'NIH': {
+        'features_base_path': 'features',
+        'metadata_path': 'data/NIH/images/Data_Entry_2017_clean.csv',
+        'main_group_col': 'Patient Age',  # Patient Age  Finding Labels
+        'additional_col': ['Patient Gender'],  # 'Patient Age'
+        "group_cols": ["Patient Age", "Patient Gender"],
+        'num_classes': 15,  # Number of diseases in ChestX-ray8
+    },
+}
+
+"""Load split features/logits/labels + metadata for a dataset."""
+def load_split_dataset(dataset_name):
     cfg = DATASET_CONFIG.get(dataset_name)
     if not cfg:
         raise ValueError(f"Unknown dataset: {dataset_name}")
     data = {}
     base_path = cfg["features_base_path"]
-
     for split in ["train", "calib", "test"]:
         path = os.path.join(base_path, f"{dataset_name}_{split}.pt")
         if not os.path.exists(path):
             raise FileNotFoundError(f"Missing feature file: {path}")
-
         features, logits, labels = load_features(path)
         if hasattr(labels, "long"):
             labels = labels.long()
@@ -37,7 +65,7 @@ def load_split_dataset(dataset_name, logits_flag=True):
             labels = labels.astype(np.int64)
         data[split] = {"features": features, "logits": logits, "labels": labels}
 
-    if logits_flag and data["calib"]["logits"] is None:
+    if data["calib"]["logits"] is None:
         model = load_classifier(dataset_name).to(device).eval()
         for split in ["train", "calib", "test"]:
             data[split]["logits"] = compute_logits(data[split]["features"], model)
@@ -76,12 +104,9 @@ def create_feature_matrix(data, metadata, dataset_name, custom_bins):
 
 def run_analysis(phi_cal, phi_test, cal_scores, test_scores,
                            probs_test, alpha, dataset_name):
-
     coverages_split, coverages_cond, q_split, cond_thresholds = compute_both_coverages(
-        phi_cal, cal_scores, phi_test, test_scores, alpha
-    )
-    compute_prediction_sets(probs_test, q_split, cond_thresholds,
-        "results",  f"{dataset_name}_pred_sets" )
+        phi_cal, cal_scores, phi_test, test_scores, alpha )
+    compute_prediction_sets(probs_test, q_split, cond_thresholds,"results",  f"{dataset_name}_pred_sets" )
     return coverages_split, coverages_cond
 
 def save_and_plot(coverages_split, coverages_cond, metadata, dataset_name, alpha):
@@ -100,8 +125,6 @@ def save_and_plot(coverages_split, coverages_cond, metadata, dataset_name, alpha
         df_cov = build_cov_df(
             coverages_split, coverages_cond,
             subgroup_series,
-            # metadata[metadata["split"] == 2][col],
-            # metadata[col].iloc[test_idx]
             group_name=display_name)
         filename = f"{dataset_name}_{col}"
         save_csv(df_cov, filename, "results")
@@ -109,8 +132,7 @@ def save_and_plot(coverages_split, coverages_cond, metadata, dataset_name, alpha
         saved_files.append(f"results/{filename}.csv")
 
     if len(saved_files) == 2:
-        plot_miscoverage(saved_files[0], saved_files[1],alpha,
-                            "Figures", f"{dataset_name}_miscoverage")
+        plot_miscoverage(saved_files[0], saved_files[1],alpha,"Figures", f"{dataset_name}_miscoverage")
     else:
         print("[WARNING] Not enough grouping columns to plot miscoverage.")
 
@@ -120,15 +142,15 @@ def parse_arguments():
     parser.add_argument("--dataset_name", default="ChestX", choices=list(DATASET_CONFIG.keys()),help="Dataset to analyze")
     parser.add_argument("--group_col", default="Patient Age", help="Group column for analysis")
     parser.add_argument('--features_path', type=str, help="Custom path to features file")
+
     args = parser.parse_args()
     return args
 
 def main():
     custom_bins = [0, 18, 40, 60, 80, 100]
     args = parse_arguments()
-    data, metadata = load_split_dataset(args.dataset_name, logits_flag=True)
+    data, metadata = load_split_dataset(args.dataset_name)
     print("Computing conformity scores...")
-
     cal_scores, test_scores, probs_cal, probs_test = compute_conformity_scores(
         data['calib']['logits'], data['test']['logits'],
         data['calib']['labels'], data['test']['labels'],

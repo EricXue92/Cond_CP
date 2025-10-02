@@ -5,23 +5,16 @@ import torch.nn.functional as F
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def compute_conformity_scores(x_calib, x_test, y_calib, y_test, device=None):
-    """Compute conformity scores (one per sample) for multi-label or single-label."""
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+def compute_conformity_scores(x_calib, x_test, y_calib, y_test):
     x_calib = torch.as_tensor(x_calib, dtype=torch.float32, device=device)
     x_test  = torch.as_tensor(x_test,  dtype=torch.float32, device=device)
-
     y_calib = torch.as_tensor(y_calib, device=device)
     y_test  = torch.as_tensor(y_test,  device=device)
-
     # Temperature scaling
     T = temperature_scaling(x_calib, y_calib)
     if isinstance(T, torch.Tensor):
         T = float(T.detach().cpu().numpy())
     T = max(T, 1e-6)
-
     # Probabilities
     probs_calib = F.softmax(x_calib / T, dim=-1)
     probs_test  = F.softmax(x_test / T,  dim=-1)
@@ -36,7 +29,6 @@ def compute_conformity_scores(x_calib, x_test, y_calib, y_test, device=None):
         scores = []
         y = y.float()
         if y.ndim == 1 or (y.ndim == 2 and y.shape[1] == 1):
-            # Single-label
             y = y.view(-1).long()
             p_true = probs.gather(1, y.view(-1, 1)).squeeze(1)
             s = (probs * (probs > p_true.unsqueeze(1))).sum(dim=1)
