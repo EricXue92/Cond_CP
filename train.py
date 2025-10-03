@@ -2,7 +2,7 @@ import os
 import torch
 import argparse
 import numpy as np
-from model_builder import load_classifier
+from model_builder import SimpleMLP
 from data_utils import load_dataloaders
 from model_setup import save_checkpoint, load_best_model
 from plot_utils import plot_loss_curves
@@ -15,6 +15,7 @@ DATASET_CONFIG = {
     "PadChest": 19,
     "VinDr": 28
 }
+
 def compute_pos_weight(loader, num_classes):
     """Compute positive class weights for handling class imbalance."""
     pos_counts = torch.zeros(num_classes)

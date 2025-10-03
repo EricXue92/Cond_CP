@@ -1,9 +1,8 @@
 import os
 import argparse
 import pandas as pd
-from utils import (computeFeatures, find_best_regularization,
-                   create_train_calib_test_split, categorical_to_numeric,
-                    set_seed)
+from phi_features import computeFeatures, find_best_regularization
+from utils import create_train_calib_test_split, categorical_to_numeric, set_seed
 from plot_utils import plot_miscoverage
 from save_utils import save_csv, build_cov_df
 from feature_io import load_features
@@ -64,6 +63,7 @@ def create_feature_matrix(features, metadata, train_idx, calib_idx, test_idx,
     # Compute predicted-probability features (Φ_cal, Φ_test)
     phi_cal, phi_test = computeFeatures(
         train_feature, calib_feature, test_feature, y_group_train, best_c)
+
     return phi_cal, phi_test
 
 def run_analysis(phi_cal, phi_test, cal_scores, test_scores,
@@ -85,6 +85,7 @@ def save_and_plot(coverages_split, coverages_cond, metadata, test_idx, dataset_n
         raise ValueError(f"No valid grouping columns found in metadata for dataset {dataset_name}")
 
     saved_files = []
+
     for col in available_cols:
         display_name = col.replace('_', ' ').title()
         df_cov = build_cov_df(
@@ -117,7 +118,6 @@ def main():
 
     features, logits, labels, metadata = load_dataset(args.dataset_name, args.features_path)
     train_idx, calib_idx, test_idx = create_train_calib_test_split(len(features))
-
     print("Computing conformity scores...")
     cal_scores, test_scores, probs_cal, probs_test = compute_conformity_scores(
         logits[calib_idx, :], logits[test_idx, :],
@@ -125,14 +125,11 @@ def main():
     )
     print("Creating feature matrices...")
     phi_cal, phi_test = create_feature_matrix(features, metadata, train_idx, calib_idx, test_idx, args.dataset_name)
-
     print("Running conformal analysis...")
     coverages_split, coverages_cond = run_analysis(phi_cal, phi_test, cal_scores, test_scores, probs_test,
                                                              args.alpha, args.dataset_name, args.group_col)
-
     print("Saving results and generating plots...")
     save_and_plot(coverages_split, coverages_cond, metadata, test_idx, args.dataset_name, args.alpha)
-
     print("Analysis complete!")
 
 if __name__ == "__main__":

@@ -6,7 +6,8 @@ from conformal_scores import compute_conformity_scores
 from save_utils import save_csv, build_cov_df
 from plot_utils import plot_miscoverage
 from conditional_coverage import compute_both_coverages, compute_prediction_sets
-from utils import set_seed, categorical_to_numeric, find_best_regularization, computeFeatures
+from utils import set_seed, categorical_to_numeric
+from phi_features import computeFeatures, find_best_regularization
 from feature_io import load_features
 
 set_seed(42)

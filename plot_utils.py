@@ -60,35 +60,35 @@ def plot_size_hist_comparison(csv_file, figsize=(7, 4), save_path=None):
 #     print(f"Learning curves saved to: {save_path}")
 #     plt.show()
 
-# def plot_loss_curves(results, save_dir="Figures", filename="learning_curve.pdf"):
-#     Path(save_dir).mkdir(parents=True, exist_ok=True)
-#     epochs = range(len(results["train_loss"]))
-#
-#     metrics = {
-#         'Loss': (results["train_loss"], results["val_loss"]),
-#         'AUROC': (results["train_auroc"], results["val_auroc"]),
-#         'F1 Score': (results["train_f1"], results["val_f1"])
-#     }
-#
-#     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-#
-#     for idx, (metric_name, (train_data, val_data)) in enumerate(metrics.items()):
-#         ax = axes[idx]
-#         ax.plot(epochs, train_data, label=f"Train", marker='o', markersize=3)
-#         ax.plot(epochs, val_data, label=f"Val", marker='s', markersize=3)
-#
-#         ax.set_title(metric_name, fontsize=12, fontweight='bold')
-#         ax.set_xlabel("Epochs")
-#         ax.set_ylabel(metric_name)
-#         ax.legend()
-#         ax.grid(True, alpha=0.3)
-#         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-#
-#     plt.tight_layout()
-#     save_path = Path(save_dir) / filename
-#     plt.savefig(save_path, bbox_inches='tight', dpi=300)
-#     print(f"Learning curves saved to: {save_path}")
-#     plt.close()  # Changed from plt.show() to plt.close() to avoid blocking
+def plot_loss_curves(results, save_dir="Figures", filename="learning_curve.pdf"):
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
+    epochs = range(1, len(results["train_loss"])+1)
+
+    metrics = {
+        'Loss': (results["train_loss"], results["val_loss"]),
+        'AUROC': (results["train_auroc"], results["val_auroc"]),
+        'F1 Score': (results["train_f1"], results["val_f1"])
+    }
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+    for idx, (metric_name, (train_data, val_data)) in enumerate(metrics.items()):
+        ax = axes[idx]
+        ax.plot(epochs, train_data, label=f"Train", marker='o', markersize=3)
+        ax.plot(epochs, val_data, label=f"Val", marker='s', markersize=3)
+
+        ax.set_title(metric_name, fontsize=12, fontweight='bold')
+        ax.set_xlabel("Epochs")
+        ax.set_ylabel(metric_name)
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+    plt.tight_layout()
+    save_path = Path(save_dir) / filename
+    plt.savefig(save_path, bbox_inches='tight', dpi=300)
+    print(f"Learning curves saved to: {save_path}")
+    plt.close()  # Changed from plt.show() to plt.close() to avoid blocking
 
 def plot_miscoverage(main_group, additional_group,
                      target_miscoverage, save_dir,

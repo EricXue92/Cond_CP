@@ -27,7 +27,6 @@ TRANSFORM = torchvision.transforms.Compose([
     xrv.datasets.XRayResizer(224),
 ])
 
-
 def load_dataset(dataset_name, data_root="data"):
     if dataset_name == "NIH":
         df = pd.read_csv(f"{data_root}/NIH/Data_Entry_2017.csv")

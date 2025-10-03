@@ -38,6 +38,8 @@ def create_rxrx1_model(num_classes=1139,
 # # https://mlmed.org/torchxrayvision/datasets.html#torchxrayvision.datasets.NIH_Dataset
 #
 
+
+
 class DenseNetFeaturizer(torch.nn.Module):
     def __init__(self, base):
         super().__init__()
