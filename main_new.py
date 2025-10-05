@@ -7,8 +7,9 @@ from save_utils import save_csv, build_cov_df
 from plot_utils import plot_miscoverage
 from conditional_coverage import compute_both_coverages, compute_prediction_sets
 from utils import set_seed, categorical_to_numeric
-from phi_features import computeFeatures, find_best_regularization
+from phi_features import computeFeatures, find_best_regularization, computeFeatures_mlp
 from feature_io import load_features
+
 
 set_seed(42)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -133,8 +134,12 @@ def create_feature_matrix(data, metadata, dataset_name, bins):
     y_group_train = metadata.loc[train_meta.index, group_col].astype(int)
     print("[DEBUG] Group counts (train):\n", y_group_train.value_counts())
 
+
     best_c = find_best_regularization(X_train, y_group_train)
     phi_cal, phi_test = computeFeatures(X_train, X_cal, X_test, y_group_train, best_c)
+
+    # phi_cal, phi_test = computeFeatures_mlp(X_train, X_cal, X_test, y_group_train)
+
     return phi_cal, phi_test, metadata
 
 
@@ -169,7 +174,7 @@ def main():
     parser.add_argument("--group_col", default="Patient Age", help="Group column for analysis")
     args = parser.parse_args()
 
-    bins = [0, 18, 10, 30, 20, 40, 60, 0, 0, 100]
+    bins = [0, 18, 40, 60, 80, 100]
     data, metadata = load_split_dataset(args.dataset_name)
 
     print("Computing conformity scores...")

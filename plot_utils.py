@@ -170,6 +170,32 @@ def add_error_bars_to_plot(ax, df):
             fmt="none", c="k", capsize=2, elinewidth=0.8
         )
 
+
+def plot_training_history(history):
+    """Plot training curves with loss and accuracy only."""
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+    # Loss
+    axes[0].plot(history['train_loss'], label='Train')
+    axes[0].plot(history['val_loss'], label='Val')
+    axes[0].set_xlabel('Epoch')
+    axes[0].set_ylabel('Loss')
+    axes[0].set_title('Loss Curve')
+    axes[0].legend()
+
+    # Accuracy
+    axes[1].plot(history['train_acc'], label='Train')
+    axes[1].plot(history['val_acc'], label='Val')
+    axes[1].set_xlabel('Epoch')
+    axes[1].set_ylabel('Accuracy')
+    axes[1].set_title('Accuracy Curve')
+    axes[1].legend()
+
+    plt.tight_layout()
+    plt.savefig(f"Figures/training_history.pdf", bbox_inches='tight')
+    plt.show()
+
+
 def main():
     # plot_miscoverage("results/ChestX_patient_age_logits.csv",
     #                 "results/ChestX_patient_gender_logits.csv",
