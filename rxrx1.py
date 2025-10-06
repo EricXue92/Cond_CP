@@ -1,7 +1,9 @@
 import os
 import argparse
 import pandas as pd
-from phi_features import computeFeatures, find_best_regularization
+from phi_features import (computeFeatures_probs, find_best_regularization,
+                          computeFeatures_indicators, computeFeatures_kernel)
+
 from utils import create_train_calib_test_split, categorical_to_numeric, set_seed
 from plot_utils import plot_miscoverage
 from save_utils import save_csv, build_cov_df
@@ -42,7 +44,7 @@ def load_dataset(dataset_name, features_path=None):
     return features, logits, labels, metadata
 
 def create_feature_matrix(features, metadata, train_idx, calib_idx, test_idx,
-                         dataset_name):
+                         dataset_name, method="indicators"):
 
     config = DATASET_CONFIG.get(dataset_name)
     group_col = config["group_col"]
@@ -60,9 +62,17 @@ def create_feature_matrix(features, metadata, train_idx, calib_idx, test_idx,
 
     best_c = find_best_regularization(train_feature, y_group_train)
 
-    # Compute predicted-probability features (Φ_cal, Φ_test)
-    phi_cal, phi_test = computeFeatures(
-        train_feature, calib_feature, test_feature, y_group_train, best_c)
+    if method == "indicators":
+        phi_cal, phi_test = computeFeatures_indicators(
+            train_feature, calib_feature, test_feature, y_group_train, best_c)
+    elif method == "kernel":
+        phi_cal, phi_test = computeFeatures_kernel(
+            train_feature, calib_feature, test_feature, y_group_train, best_c)
+    elif method == "probs":
+        phi_cal, phi_test = computeFeatures_probs(
+            train_feature, calib_feature, test_feature, y_group_train, best_c)
+    else:
+        raise ValueError(f"Unknown method: {method}")
 
     return phi_cal, phi_test
 
@@ -109,13 +119,13 @@ def parse_arguments():
     parser.add_argument("--dataset_name", default="rxrx1", choices=list(DATASET_CONFIG.keys()),help="Dataset to analyze")
     parser.add_argument("--group_col", default="experiment", choices=["experiment", "cell type"], help="Group column for analysis")
     parser.add_argument('--features_path', type=str, help="Custom path to features file")
+    parser.add_argument("--method", default="indicators", choices=["indicators", "kernel", "probs"], help="Method for computing features"
+                        )
     args = parser.parse_args()
     return args
 
 def main():
     args = parse_arguments()
-
-
     features, logits, labels, metadata = load_dataset(args.dataset_name, args.features_path)
     train_idx, calib_idx, test_idx = create_train_calib_test_split(len(features))
     print("Computing conformity scores...")
@@ -124,7 +134,9 @@ def main():
         labels[calib_idx], labels[test_idx]
     )
     print("Creating feature matrices...")
-    phi_cal, phi_test = create_feature_matrix(features, metadata, train_idx, calib_idx, test_idx, args.dataset_name)
+    phi_cal, phi_test = create_feature_matrix(features, metadata, train_idx, calib_idx, test_idx,
+                                              args.dataset_name, args.method)
+
     print("Running conformal analysis...")
     coverages_split, coverages_cond = run_analysis(phi_cal, phi_test, cal_scores, test_scores, probs_test,
                                                              args.alpha, args.dataset_name, args.group_col)
