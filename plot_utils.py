@@ -205,6 +205,15 @@ def main():
     #                           save_path="Figures/rxrx1_size_histogram_features.pdf")
     # plot_size_hist_comparison("results/pred_sets_groups_groups.csv", figsize=(8, 6),
     #                           save_path="Figures/rxrx1_size_histogram_groups.pdf")
+
+    plot_miscoverage(main_group="results/iwildcam_location_grouped.csv", additional_group="results/iwildcam_time_of_day.csv",
+                     target_miscoverage=0.1, save_dir="Figures",
+                     save_name="iwildcam_miscoverage")
+
+
+
+
+
     plot_size_hist_comparison("results/rxrx1_pred_sets.csv", figsize=(8, 6),
                               save_path="Figures/rxrx1_size_histogram_groups.pdf")
     pass

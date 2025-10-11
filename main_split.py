@@ -3,7 +3,9 @@ from conformal_scores import compute_conformity_scores
 from utils import set_seed
 from save_utils import save_csv, build_cov_df
 from plot_utils import plot_miscoverage
-from data_split_utils import load_split_data, create_phi_split
+from data_split_utils import load_split_dataset, create_feature_matrix
+
+# load_split_data, create_phi_split
 from conditional_coverage import run_conformal_analysis
 import argparse
 from data_config import DATASET_CONFIG
@@ -27,7 +29,6 @@ def save_and_plot(coverages_split, coverages_cond, metadata, test_labels, datase
 
     for col in available_cols:
 
-        # Format column name for saving
         save_name = col.lower().replace(" ", "_")
 
         values = metadata.loc[test_mask, col]
@@ -56,7 +57,7 @@ def save_and_plot(coverages_split, coverages_cond, metadata, test_labels, datase
 def run_analysis(dataset_name, use_groups, use_logits, add_features, custom_bins, n_bins, alpha=0.1):
 
     analysis_type = "groups" if use_groups else "logits"
-    data = load_split_data(dataset_name, compute_missing_logits=True)
+    data = load_split_dataset(dataset_name)
 
     calib_logits, calib_labels = data['calib']['logits'], data['calib']['labels']
     test_logits, test_labels = data['test']['logits'] , data['test']['labels']
@@ -67,7 +68,7 @@ def run_analysis(dataset_name, use_groups, use_logits, add_features, custom_bins
         calib_logits, test_logits, calib_labels, test_labels
     )
 
-    phi_cal, phi_test = create_phi_split(
+    phi_cal, phi_test = create_feature_matrix(
         dataset_name=dataset_name,
         data=data,
         use_groups=use_groups,
@@ -98,7 +99,7 @@ def parse_arguments():
 
 def main():
     args = parse_arguments()
-    custom_bins = [0, 18, 30, 40, 50,  60, 70, 80, 90, 100] # None
+    custom_bins = [0, 18, 30, 40, 50, 60, 70, 80, 90, 100] # None
 
     run_analysis(dataset_name=args.dataset, use_groups=args.use_groups,
                             use_logits=args.use_logits, add_features=args.add_features,
@@ -108,4 +109,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

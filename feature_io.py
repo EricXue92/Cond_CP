@@ -1,28 +1,22 @@
 import os
 import torch
 
-def save_features(features, logits, labels, filepath, indices=None, overwrite=True):
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    if os.path.exists(filepath) and not overwrite:
-        print(f"[INFO] Skipped, file already exists: {filepath}")
-        return
-    save_dict = {
-        "features": features,
-        "logits": logits,
-        "labels": labels
-    }
-    if indices is not None:
-        save_dict["indices"] = indices
-    torch.save(save_dict, filepath)
-    print(f"[INFO] Saved: {filepath}")
+def save_features(features, logits, labels, filename, savedir="features", overwrite=False):
+    os.makedirs(savedir, exist_ok=True)
+    out_path = os.path.join(savedir, filename)
 
-def load_features(path):
-    if not os.path.isfile(path):
-        raise FileNotFoundError(f"Features file not found: {path}")
-    data = torch.load(path, map_location="cpu")
-    return (
-        data["features"],
-        data["logits"],
-        data.get("labels", None),
-        data.get("indices", None)
-    )
+    if os.path.exists(out_path) and not overwrite:
+        print(f"[SKIP] File already exists: {out_path}")
+        return out_path
+    torch.save({"features": features, "logits": logits, "labels": labels}, out_path)
+    print(f"Features saved: {out_path}")
+    return out_path
+
+def load_features(filepath, device="cpu"):
+    if not os.path.isfile(filepath):
+        raise FileNotFoundError(f"Features file not found: {filepath}")
+    data = torch.load(filepath, map_location=device)
+    print(f"[INFO] Loaded features from {filepath}")
+    return data["features"], data["logits"], data["labels"]
+
+

@@ -4,6 +4,9 @@ import math, random
 import torch
 import os
 
+from sklearn.model_selection import train_test_split
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def set_seed(seed, enforce_determinism=True):
@@ -23,19 +26,54 @@ def set_seed(seed, enforce_determinism=True):
     return seed
 
 # Data Processing Functions
-def create_train_calib_test_split(n_samples, train_ratio=0.25, calib_ratio=0.25):
+
+    # train_idx, calib_idx, test_idx = create_train_calib_test_split(
+    #     len(features),
+    #     train_ratio = 0.25,
+    #     calib_ratio = 0.25,
+    #     random_state = 42,
+    #     y = group_labels,  # Stratify by groups
+    #     stratify = True,
+    #     verbose = True,
+    # )
+
+def create_train_calib_test_split(n_samples, y, train_ratio=0.25,
+                                  calib_ratio=0.25, random_state=42):
+
+    test_ratio = 1.0 - train_ratio - calib_ratio
     indices = np.arange(n_samples)
-    np.random.shuffle(indices)
 
-    # Calculate split points
-    train_end = int(n_samples * train_ratio)
-    calib_end = int(n_samples * (train_ratio + calib_ratio))
-
-    return (
-        indices[:train_end],  # train
-        indices[train_end:calib_end],  # calibration
-        indices[calib_end:]  # test
+    train_idx, temp_idx = train_test_split(
+        indices,
+        train_size=train_ratio,
+        stratify=y,
+        random_state=random_state
     )
+
+    calib_size = calib_ratio / (calib_ratio + test_ratio)
+    calib_idx, test_idx = train_test_split(
+        temp_idx,
+        train_size=calib_size,
+        stratify=y[temp_idx],
+        random_state=random_state
+    )
+    print(f"[INFO] Split sizes → Train: {len(train_idx)}, Calib: {len(calib_idx)}, Test: {len(test_idx)}")
+    return train_idx, calib_idx, test_idx
+
+
+    # rng = np.random.RandomState(random_state)
+    # indices = np.arange(n_samples)
+    # rng.shuffle(indices)
+    #
+    # # Calculate split points
+    # train_end = int(n_samples * train_ratio)
+    # calib_end = int(n_samples * (train_ratio + calib_ratio))
+    #
+    # return (
+    #     indices[:train_end],  # train
+    #     indices[train_end:calib_end],  # calibration
+    #     indices[calib_end:]  # test
+    # )
 
 def categorical_to_numeric(data, col):
     """Encode categorical labels as integers starting from 0."""

@@ -3,10 +3,87 @@ import os
 from pathlib import Path
 import joblib
 from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
+from sklearn.metrics import make_scorer, log_loss
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import StratifiedKFold, train_test_split, PredefinedSplit
 
 from utils import set_seed
 set_seed(42)
+
+#
+# def find_best_regularization(X, y, numCs=30, minC=1e-4, maxC=10.0, cv_folds=5):
+#
+#     x_np = X.detach().cpu().numpy() if hasattr(X, "detach") else np.asarray(X)
+#     y_np = y.cpu().numpy() if hasattr(y, "cpu") else np.asarray(y)
+#
+#     Cs = np.logspace(np.log10(minC), np.log10(maxC), numCs)
+#     unique, counts = np.unique(y_np, return_counts=True)
+#     imbalanced = (counts.min() / counts.max()) < 0.3
+#
+#     print(f"\n[INFO] Searching {numCs} values from C={minC} to C={maxC}")
+#     print(f"[INFO] Classes: {len(unique)}, Samples: {len(y_np)}")
+#     if imbalanced:
+#         print(f"[INFO] Class imbalance detected → using balanced weights")
+#
+#     # Drop ultra-rare classes
+#     original_size = len(y_np)
+#     rare_classes = unique[counts < 2]
+#     if len(rare_classes) > 0:
+#         mask = ~np.isin(y_np, rare_classes)
+#         x_np, y_np = x_np[mask], y_np[mask]
+#         unique, counts = np.unique(y_np, return_counts=True)
+#         dropped = original_size - len(y_np)
+#         print(
+#             f"[WARN] Dropped {len(rare_classes)} rare classes ({dropped} samples, {dropped / original_size * 100:.1f}%)")
+#         print(f"[INFO] Remaining: {len(unique)} classes, {len(y_np)} samples")
+#
+#     all_classes = unique
+#
+#     # Custom scorer - add **kwargs to absorb extra parameters
+#     def custom_log_loss(y_true, y_pred, **kwargs):
+#         return log_loss(y_true, y_pred, labels=all_classes)
+#
+#     scorer = make_scorer(custom_log_loss, needs_proba=True, greater_is_better=False)
+#
+#     # Determine CV strategy
+#     min_count = counts.min()
+#     adjusted_cv_folds = min(cv_folds, min_count)
+#
+#     if adjusted_cv_folds < 2:
+#         print(f"[INFO] Min class size={min_count} → using train/val split instead of CV")
+#         indices = np.arange(len(y_np))
+#         train_idx, val_idx = train_test_split(
+#             indices, test_size=0.2, stratify=None, random_state=42
+#         )
+#         test_fold = np.full(len(y_np), -1, dtype=int)
+#         test_fold[val_idx] = 0
+#         cv_strategy = PredefinedSplit(test_fold)
+#     else:
+#         if adjusted_cv_folds < cv_folds:
+#             print(f"[INFO] Adjusting CV folds from {cv_folds} to {adjusted_cv_folds}")
+#         cv_strategy = StratifiedKFold(n_splits=adjusted_cv_folds, shuffle=True, random_state=42)
+#
+#     try:
+#         model = LogisticRegressionCV(
+#             Cs=Cs,
+#             cv=cv_strategy,
+#             solver="lbfgs",
+#             max_iter=5000,
+#             scoring=scorer,
+#             class_weight='balanced' if imbalanced else None,
+#             random_state=42,
+#             n_jobs=-1
+#         )
+#         model.fit(x_np, y_np)
+#         best_c = model.C_[0]
+#         print(f"[INFO] Best C: {best_c:.4f}")
+#         return best_c
+#
+#     except (ValueError, TypeError) as e:
+#         print(f"[WARN] LogisticRegressionCV failed: {e}")
+#         print("[INFO] Falling back to C=1.0")
+#         return 1.0
+
 
 def find_best_regularization(X, y, numCs=30, minC=1e-4, maxC=10.0, cv_folds=5):
     x_np = X.detach().cpu().numpy() if hasattr(X, "detach") else np.asarray(X)
@@ -33,19 +110,13 @@ def find_best_regularization(X, y, numCs=30, minC=1e-4, maxC=10.0, cv_folds=5):
     print(f"[INFO] Best C: {best_c:.4f}")
     return best_c
 
-def computeFeatures_probs(x_train, x_cal, x_test, y_train, best_c=None, normalize=True,
+
+def computeFeatures_probs(x_train, x_cal, x_test, y_train, best_c=None,
                     save_path=None, dataset_name=None):
     def to_numpy(x):
         return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
     x_train, x_cal, x_test = map(to_numpy, [x_train, x_cal, x_test])
     y_train = np.asarray(y_train)
-    scaler = None
-    if normalize:
-        scaler = StandardScaler()
-        x_train = scaler.fit_transform(x_train)
-        x_cal = scaler.transform(x_cal)
-        x_test = scaler.transform(x_test)
-        print("[INFO] Features normalized")
 
     if save_path and os.path.exists(save_path):
         print(f"[INFO] Loading existing model from {save_path}")
@@ -82,27 +153,44 @@ def computeFeatures_probs(x_train, x_cal, x_test, y_train, best_c=None, normaliz
     features_cal = model.predict_proba(x_cal)
     features_test = model.predict_proba(x_test)
 
-    # Print performance
+    # Diagnostic metrics
     train_acc = model.score(x_train, y_train)
+    train_preds = model.predict(x_train)
+    cal_preds = model.predict(x_cal)
+    test_preds = model.predict(x_test)
+
     print(f"\n[RESULTS] Train Accuracy: {train_acc:.4f}")
+    print(f"[INFO] Prediction diversity:")
+    print(f"  Train: {len(np.unique(train_preds))}/{len(unique)} groups predicted")
+    print(f"  Cal:   {len(np.unique(cal_preds))}/{len(unique)} groups predicted")
+    print(f"  Test:  {len(np.unique(test_preds))}/{len(unique)} groups predicted")
+
+    # Check prediction confidence
+    max_probs_cal = features_cal.max(axis=1)
+    max_probs_test = features_test.max(axis=1)
+    print(f"[INFO] Average max probability:")
+    print(f"  Cal:  {max_probs_cal.mean():.3f} (std: {max_probs_cal.std():.3f})")
+    print(f"  Test: {max_probs_test.mean():.3f} (std: {max_probs_test.std():.3f})")
+
+    # # Print performance
+    # train_acc = model.score(x_train, y_train)
+    # print(f"\n[RESULTS] Train Accuracy: {train_acc:.4f}")
+    # print(f"[INFO] Features shape - Cal: {features_cal.shape}, Test: {features_test.shape}")
+
+    # Overfitting warning
+    if train_acc > 0.99:
+        print("[WARN] Perfect training accuracy - groups may be highly separable")
+        if max_probs_cal.mean() > 0.95:
+            print("[WARN] Very high prediction confidence - model may be overconfident")
 
     print(f"[INFO] Features shape - Cal: {features_cal.shape}, Test: {features_test.shape}")
 
-    # if save_path:
-    #     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-    #     saved_data = {
-    #         'model': model,
-    #         'scaler': scaler,
-    #         'best_c': best_c,
-    #         'num_classes': len(unique),
-    #         'dataset_name': dataset_name
-    #     }
-    #     joblib.dump(saved_data, save_path)
-    #     print(f"[INFO] Model saved to {save_path}")
+
     return features_cal, features_test
 
+
 def computeFeatures_indicators(x_train, x_cal, x_test, y_train, best_c=None, normalize=True,
-                            save_path=None, dataset_name=None, include_probabilities=False):
+                               save_path=None, dataset_name=None, include_probabilities=False):
     def to_numpy(x):
         return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
 
@@ -119,7 +207,6 @@ def computeFeatures_indicators(x_train, x_cal, x_test, y_train, best_c=None, nor
 
     if save_path and os.path.exists(save_path):
         print(f"[INFO] Loading existing logistic model from {save_path}")
-
         saved = joblib.load(save_path)
         model = saved["model"]
     else:
@@ -137,23 +224,31 @@ def computeFeatures_indicators(x_train, x_cal, x_test, y_train, best_c=None, nor
             n_jobs=-1,
         )
         model.fit(x_train, y_train)
-        print(f"[INFO] Trained logistic model (C={best_c:.3g}) for indicator Φ | Train acc={model.score(x_train, y_train):.3f}")
+        print(
+            f"[INFO] Trained logistic model (C={best_c:.3g}) for indicator Φ | Train acc={model.score(x_train, y_train):.3f}")
 
-        if save_path:
-            Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-            joblib.dump({"model": model, "scaler": scaler, "best_c": best_c}, save_path)
+        # if save_path:
+        #     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        #     joblib.dump({"model": model, "scaler": scaler, "best_c": best_c}, save_path)
 
     pred_cal = model.predict(x_cal)
     pred_test = model.predict(x_test)
-    num_groups = len(np.unique(y_train))
+
+    # FIX: Use actual class labels, not range(num_groups)
+    unique_classes = np.unique(y_train)  # E.g., [0, 3, 4] for CAMELYON17
+    num_groups = len(unique_classes)
 
     features_cal = np.zeros((len(pred_cal), num_groups + 1))
     features_test = np.zeros((len(pred_test), num_groups + 1))
+
+    # Intercept column
     features_cal[:, 0] = 1.0
     features_test[:, 0] = 1.0
-    for g in range(num_groups):
-        features_cal[:, g + 1] = (pred_cal == g).astype(float)
-        features_test[:, g + 1] = (pred_test == g).astype(float)
+
+    # Indicator for each actual class
+    for i, group_label in enumerate(unique_classes):
+        features_cal[:, i + 1] = (pred_cal == group_label).astype(float)
+        features_test[:, i + 1] = (pred_test == group_label).astype(float)
 
     if include_probabilities:
         probs_cal = model.predict_proba(x_cal)
@@ -220,203 +315,4 @@ def computeFeatures_kernel(x_train, x_cal, x_test, y_train, best_c=None, normali
 
 
 
-
-# phi_features.py - Modified version
-#
-# def computeFeatures_indicators(x_train, x_cal, x_test, y_train,
-#                                best_c=None, normalize=True,
-#                                save_path=None, dataset_name=None,
-#                                include_probabilities=False):
-#
-#     def to_numpy(x):
-#         return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
-#
-#     x_train, x_cal, x_test = map(to_numpy, [x_train, x_cal, x_test])
-#     y_train = np.asarray(y_train)
-#
-#     # Normalize features
-#     scaler = None
-#     if normalize:
-#         scaler = StandardScaler()
-#         x_train = scaler.fit_transform(x_train)
-#         x_cal = scaler.transform(x_cal)
-#         x_test = scaler.transform(x_test)
-#         print("[INFO] Features normalized")
-#
-#     # Load or train model
-#     if save_path and os.path.exists(save_path):
-#         print(f"[INFO] Loading existing model from {save_path}")
-#         # saved_data = joblib.load(save_path)
-#         # model = saved_data['model']
-#     else:
-#         print("[INFO] Training new model...")
-#         if best_c is None:
-#             best_c = find_best_regularization(x_train, y_train)
-#
-#         unique, counts = np.unique(y_train, return_counts=True)
-#         imbalanced = (counts.min() / counts.max()) < 0.3
-#
-#         model = LogisticRegression(
-#             C=best_c,
-#             solver="lbfgs",
-#             max_iter=5000,
-#             class_weight='balanced' if imbalanced else None,
-#             random_state=42,
-#             n_jobs=-1
-#         )
-#         model.fit(x_train, y_train)
-#         #
-#         # if save_path:
-#         #     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-#         #     joblib.dump({'model': model, 'scaler': scaler, 'best_c': best_c}, save_path)
-#
-#     # CRITICAL: Get hard predictions for indicators
-#     pred_cal = model.predict(x_cal)
-#     pred_test = model.predict(x_test)
-#
-#     # Create indicator matrix: Φ(x) = [1, 1{x ∈ G_1}, 1{x ∈ G_2}, ...]
-#     num_groups = len(np.unique(y_train))
-#
-#     # Intercept + group indicators
-#     features_cal = np.zeros((len(pred_cal), num_groups + 1))
-#     features_test = np.zeros((len(pred_test), num_groups + 1))
-#
-#     features_cal[:, 0] = 1  # intercept
-#     features_test[:, 0] = 1
-#
-#     for g in range(num_groups):
-#         features_cal[:, g + 1] = (pred_cal == g).astype(float)
-#         features_test[:, g + 1] = (pred_test == g).astype(float)
-#
-#     print(f"[INFO] Created indicator features - Cal: {features_cal.shape}, Test: {features_test.shape}")
-#     print(f"[INFO] Feature format: [intercept, 1{{age∈G_0}}, 1{{age∈G_1}}, ...]")
-#
-#     # Optional: add soft probabilities for richer coverage (Section 3.1)
-#     if include_probabilities:
-#         probs_cal = model.predict_proba(x_cal)
-#         probs_test = model.predict_proba(x_test)
-#         features_cal = np.hstack([features_cal, probs_cal])
-#         features_test = np.hstack([features_test, probs_test])
-#         print(f"[INFO] Added probability features - Cal: {features_cal.shape}, Test: {features_test.shape}")
-#
-#     # Print group distribution for debugging
-#     print("\n[DEBUG] Predicted age group distribution (calibration):")
-#     unique_cal, counts_cal = np.unique(pred_cal, return_counts=True)
-#     for g, c in zip(unique_cal, counts_cal):
-#         print(f"  Group {g}: {c} samples ({100 * c / len(pred_cal):.1f}%)")
-#
-#     return features_cal, features_test
-#
-#
-# def computeFeatures_kernel(x_train, x_cal, x_test, y_train,
-#                            best_c=None, normalize=True,
-#                            kernel_gamma=4.0, lambda_reg=0.005,
-#                            save_path=None):
-#     def to_numpy(x):
-#         return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
-#
-#     x_train, x_cal, x_test = map(to_numpy, [x_train, x_cal, x_test])
-#     y_train = np.asarray(y_train)
-#
-#     # Normalize
-#     scaler = StandardScaler() if normalize else None
-#     if normalize:
-#         x_train = scaler.fit_transform(x_train)
-#         x_cal = scaler.transform(x_cal)
-#         x_test = scaler.transform(x_test)
-#
-#     # Train classifier
-#     if save_path and os.path.exists(save_path):
-#         saved_data = joblib.load(save_path)
-#         model = saved_data['model']
-#     else:
-#         if best_c is None:
-#             best_c = find_best_regularization(x_train, y_train)
-#         model = LogisticRegression(C=best_c, max_iter=5000, random_state=42)
-#         model.fit(x_train, y_train)
-#         # if save_path:
-#         #     joblib.dump({'model': model, 'scaler': scaler}, save_path)
-#
-#     # Create kernel features: K(x, x_i) for representative points
-#     # Use representative points from each age group
-#     num_groups = len(np.unique(y_train))
-#     representatives = []
-#     for g in range(num_groups):
-#         group_samples = x_train[y_train == g]
-#         # Use median of each group as representative
-#         representatives.append(np.median(group_samples, axis=0))
-#     representatives = np.array(representatives)
-#
-#     # Compute Gaussian kernel features
-#     def gaussian_kernel(x, centers, gamma):
-#         # K(x, c) = exp(-gamma * ||x - c||^2)
-#         n_samples = x.shape[0]
-#         n_centers = centers.shape[0]
-#         kernel_features = np.zeros((n_samples, n_centers))
-#         for i in range(n_centers):
-#             diff = x - centers[i]
-#             kernel_features[:, i] = np.exp(-gamma * np.sum(diff ** 2, axis=1))
-#         return kernel_features
-#
-#     kernel_cal = gaussian_kernel(x_cal, representatives, kernel_gamma)
-#     kernel_test = gaussian_kernel(x_test, representatives, kernel_gamma)
-#
-#     # Add intercept: Φ(x) = [1, K(x, c_1), K(x, c_2), ...]
-#     features_cal = np.hstack([np.ones((len(kernel_cal), 1)), kernel_cal])
-#     features_test = np.hstack([np.ones((len(kernel_test), 1)), kernel_test])
-#
-#     print(f"[INFO] Created kernel features with gamma={kernel_gamma}")
-#     print(f"[INFO] Shape - Cal: {features_cal.shape}, Test: {features_test.shape}")
-#
-#     return features_cal, features_test
-#
-#
-# def computeFeatures_metadata(x_train, x_cal, x_test, y_train,
-#                              metadata=None,
-#                              calib_indices=None,
-#                              test_indices=None,
-#                              normalize=False,
-#                              save_path=None,
-#                              dataset_name=None):
-#     if metadata is None or calib_indices is None or test_indices is None:
-#         raise ValueError("metadata, calib_indices, and test_indices are required")
-#
-#     # Convert indices to numpy if needed
-#     if hasattr(calib_indices, 'numpy'):
-#         calib_indices = calib_indices.numpy()
-#     if hasattr(test_indices, 'numpy'):
-#         test_indices = test_indices.numpy()
-#
-#     # Extract actual age groups from metadata
-#     age_cal = metadata.loc[calib_indices, "Patient Age"].values
-#     age_test = metadata.loc[test_indices, "Patient Age"].values
-#
-#     # Determine number of groups
-#     num_groups = len(np.unique(y_train))
-#
-#     # Create indicator matrix: [intercept, 1{age∈G_0}, 1{age∈G_1}, ...]
-#     features_cal = np.zeros((len(age_cal), num_groups + 1))
-#     features_test = np.zeros((len(age_test), num_groups + 1))
-#
-#     features_cal[:, 0] = 1  # intercept
-#     features_test[:, 0] = 1
-#
-#     for g in range(num_groups):
-#         features_cal[:, g + 1] = (age_cal == g).astype(float)
-#         features_test[:, g + 1] = (age_test == g).astype(float)
-#
-#     print(f"\n[INFO] Created metadata-based indicator features:")
-#     print(f"  Shape - Cal: {features_cal.shape}, Test: {features_test.shape}")
-#     print(f"  Format: [intercept, 1{{age∈G_0}}, 1{{age∈G_1}}, ...]")
-#     print(f"  Using ACTUAL age groups from metadata (no learning)")
-#
-#     # Print group distribution
-#     print("\n[DEBUG] True age group distribution (calibration):")
-#     unique_cal, counts_cal = np.unique(age_cal, return_counts=True)
-#     for g, c in zip(unique_cal, counts_cal):
-#         print(f"  Group {g}: {c} samples ({100 * c / len(age_cal):.1f}%)")
-#
-#     return features_cal, features_test
-#
-#
 

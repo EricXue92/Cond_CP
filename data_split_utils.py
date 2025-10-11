@@ -2,10 +2,9 @@ import os
 import torch
 import numpy as np
 import pandas as pd
-from model_builder import load_classifier
-from feature_io import load_features
 from data_config import DATASET_CONFIG
 from scipy.special import softmax
+from feature_io import load_features
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -74,6 +73,34 @@ def get_metadata_splits(metadata: pd.DataFrame, data: dict):
         test_meta  = metadata.iloc[n_tr + n_ca:n_tr + n_ca + n_te]
     return train_meta, calib_meta, test_meta
 
+
+
+def load_split_dataset(dataset_name):
+    cfg = DATASET_CONFIG.get(dataset_name)
+    if not cfg:
+        raise ValueError(f"Unknown dataset: {dataset_name}")
+    data = {}
+    base_path = cfg["features_base_path"]
+
+    for split in ["train", "calib", "test"]:
+        path = os.path.join(base_path, f"{dataset_name}_{split}.pt")
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Missing feature file: {path}")
+
+        features, logits, labels, _ = load_features(path)
+        if hasattr(labels, "long"):
+            labels = labels.long()
+        elif hasattr(labels, "astype"):
+            labels = labels.astype(np.int64)
+        data[split] = {"features": features, "logits": logits, "labels": labels}
+
+    if data["calib"]["logits"] is None:
+        model = load_classifier(dataset_name).to(device).eval()
+        for split in ["train", "calib", "test"]:
+            data[split]["logits"] = compute_logits(data[split]["features"], model)
+    meta_path = cfg.get("metadata_path")
+    metadata = pd.read_csv(meta_path) if meta_path and os.path.exists(meta_path) else None
+    return data, metadata
 
 
 def create_feature_matrix(dataset_name, data, use_groups, use_logits,

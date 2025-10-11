@@ -1,7 +1,8 @@
 import os
 import torch
 from conformal_scores import compute_conformity_scores
-from utils import set_seed, categorical_to_numeric, find_best_regularization, computeFeatures
+from utils import set_seed, categorical_to_numeric
+from phi_features import computeFeatures_probs, find_best_regularization
 from save_utils import save_csv, build_cov_df
 from plot_utils import plot_miscoverage
 from data_split_utils import compute_logits
@@ -37,6 +38,7 @@ DATASET_CONFIG = {
         "group_cols": ["Patient Age", "Patient Gender"],
         'num_classes': 15,  # Number of diseases in ChestX-ray8
     },
+
     'NIH': {
         'features_base_path': 'features',
         'metadata_path': 'data/NIH/images/Data_Entry_2017_clean.csv',
@@ -97,7 +99,7 @@ def create_feature_matrix(data, metadata, dataset_name, custom_bins):
 
     best_c = find_best_regularization(train_feature, y_group_train)
 
-    phi_cal, phi_test = computeFeatures(
+    phi_cal, phi_test = computeFeatures_probs(
         train_feature, calib_feature, test_feature, y_group_train, best_c
     )
     return phi_cal, phi_test, metadata
