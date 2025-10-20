@@ -25,21 +25,8 @@ def set_seed(seed, enforce_determinism=True):
             print(f"[WARNING] Could not enforce deterministic algorithms: {e}")
     return seed
 
-# Data Processing Functions
-
-    # train_idx, calib_idx, test_idx = create_train_calib_test_split(
-    #     len(features),
-    #     train_ratio = 0.25,
-    #     calib_ratio = 0.25,
-    #     random_state = 42,
-    #     y = group_labels,  # Stratify by groups
-    #     stratify = True,
-    #     verbose = True,
-    # )
-
 def create_train_calib_test_split(n_samples, y, train_ratio=0.25,
                                   calib_ratio=0.25, random_state=42):
-
     test_ratio = 1.0 - train_ratio - calib_ratio
     indices = np.arange(n_samples)
 
@@ -49,7 +36,6 @@ def create_train_calib_test_split(n_samples, y, train_ratio=0.25,
         stratify=y,
         random_state=random_state
     )
-
     calib_size = calib_ratio / (calib_ratio + test_ratio)
     calib_idx, test_idx = train_test_split(
         temp_idx,
@@ -59,21 +45,6 @@ def create_train_calib_test_split(n_samples, y, train_ratio=0.25,
     )
     print(f"[INFO] Split sizes → Train: {len(train_idx)}, Calib: {len(calib_idx)}, Test: {len(test_idx)}")
     return train_idx, calib_idx, test_idx
-
-
-    # rng = np.random.RandomState(random_state)
-    # indices = np.arange(n_samples)
-    # rng.shuffle(indices)
-    #
-    # # Calculate split points
-    # train_end = int(n_samples * train_ratio)
-    # calib_end = int(n_samples * (train_ratio + calib_ratio))
-    #
-    # return (
-    #     indices[:train_end],  # train
-    #     indices[train_end:calib_end],  # calibration
-    #     indices[calib_end:]  # test
-    # )
 
 def categorical_to_numeric(data, col):
     """Encode categorical labels as integers starting from 0."""

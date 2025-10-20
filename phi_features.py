@@ -3,37 +3,39 @@ import os
 import joblib
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
-from sklearn.model_selection import learning_curve, validation_curve
-from sklearn.utils import class_weight
-
 from utils import set_seed
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import log_loss, accuracy_score
+from sklearn.metrics import log_loss
 from sklearn.calibration import calibration_curve
 
 set_seed(42)
 
-def find_best_regularization(
-        X, y, numCs=20, minC=1e-4, maxC=10.0, cv=5, verbose=True):
+def find_best_regularization(X, y, num_candidates=20, minC=1e-4, maxC=10.0, cv_folds=5, verbose=True):
     x_np = X.detach().cpu().numpy() if hasattr(X, "detach") else np.asarray(X)
-    y_np = y.cpu().numpy() if hasattr(y, "cpu") else np.asarray(y)
+
+    if hasattr(y, "detach"):
+        y_np = y.detach().cpu().numpy()
+    elif hasattr(y, "cpu") and callable(getattr(y, "cpu", None)):
+        y_np = y.cpu().numpy()
+    else:
+        y_np = np.asarray(y)
 
     unique, counts = np.unique(y_np, return_counts=True)
     ratio = counts.min() / counts.max()
     class_weight = "balanced" if ratio < 0.5 else None
+
     if verbose and ratio < 0.5:
         print(f"[INFO] Imbalance detected (ratio={ratio:.3f}), using balanced weights")
 
-    Cs = np.logspace(np.log10(minC), np.log10(maxC), numCs)
+    candidate_Cs = np.logspace(np.log10(minC), np.log10(maxC), num_candidates)
 
     model = LogisticRegressionCV(
-        Cs=Cs,
-        cv=cv,
+        Cs=candidate_Cs,
+        cv=cv_folds,
         scoring="neg_log_loss",
         solver="lbfgs",
         penalty="l2",
         multi_class="multinomial",
-        max_iter=10000,
+        max_iter=5000,
         class_weight=class_weight,
         random_state=42,
         n_jobs=-1,
@@ -42,11 +44,12 @@ def find_best_regularization(
     model.fit(x_np, y_np)
     best_C = float(np.mean(model.C_))
     mean_loss = -np.mean([s.mean(axis=0) for s in model.scores_.values()])
-    print(f"[INFO] Probability-calibrated CV complete.")
-    print(f"       Best C = {best_C:.6f}")
-    print(f"       Mean CV Log-Loss = {mean_loss:.6f} (lower = better)")
-    return best_C, Cs
 
+    if verbose:
+        print(f"[INFO] Probability-calibrated CV complete.")
+        print(f"       Best C = {best_C:.6f}")
+        print(f"       Mean CV Log-Loss = {mean_loss:.6f} (lower = better)")
+    return best_C, candidate_Cs
 
 def computeFeatures_probs(x_train, x_cal, x_test, y_train, C=None,
                           verbose=True, **cv_params):
@@ -58,6 +61,10 @@ def computeFeatures_probs(x_train, x_cal, x_test, y_train, C=None,
 
     if C is None:
         C, _ = find_best_regularization(x_train, y_train, verbose=verbose, **cv_params)
+    elif isinstance(C, tuple):
+        C = C[0]
+    else:
+        C = float(C)
 
     unique, counts = np.unique(y_train, return_counts=True)
     ratio = counts.min() / counts.max()
@@ -69,7 +76,7 @@ def computeFeatures_probs(x_train, x_cal, x_test, y_train, C=None,
     model = LogisticRegression(
         C=C,
         solver="lbfgs",
-        max_iter=10000,
+        max_iter=5000,
         multi_class="multinomial",
         class_weight=class_weight,
         random_state=42,
@@ -82,6 +89,7 @@ def computeFeatures_probs(x_train, x_cal, x_test, y_train, C=None,
     probs_train = model.predict_proba(x_train)
     acc = np.mean(preds_train == y_train)
     logloss = log_loss(y_train, probs_train)
+
     if verbose:
         print(f"[INFO] Training Accuracy: {acc:.4f}")
         print(f"[INFO] Training Log-Loss: {logloss:.6f} (lower = better)")
@@ -89,10 +97,7 @@ def computeFeatures_probs(x_train, x_cal, x_test, y_train, C=None,
 
     features_cal = model.predict_proba(x_cal)
     features_test = model.predict_proba(x_test)
-
     return features_cal, features_test
-
-
 
 def computeFeatures_indicators(x_train, x_cal, x_test, y_train, best_c=None,
                                save_path=None, dataset_name=None, include_probabilities=False):

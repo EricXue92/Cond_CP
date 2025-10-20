@@ -63,7 +63,6 @@ def main():
     parser = argparse.ArgumentParser(description="Feature extraction for WILDS datasets")
     parser.add_argument("--dataset_name", default="fmow", choices=["rxrx1", "iwildcam", "fmow"],
                         help="Dataset to process", )
-    # parser.add_argument("--dataset_name", type=str, required=True, choices=["rxrx1", "iwildcam", "fmow"], help="Dataset to process",)
     parser.add_argument("--batch_size", type=int, default=128, help="Batch size for feature extraction")
     parser.add_argument("--overwrite", action="store_true",help="Overwrite existing feature file if it exists",)
     args = parser.parse_args()
