@@ -11,7 +11,6 @@ DATASET_CONFIG = {
         "features_base_path": "features"  # optional for split datasets
     },
 
-
     'ChestX': {
         'features_base_path': 'features',
         'metadata_path': 'data/ChestXray8/foundation_fair_meta/metadata_attr_lr.csv',

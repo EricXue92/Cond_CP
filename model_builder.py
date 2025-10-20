@@ -3,9 +3,12 @@ import torch.nn as nn
 from torchvision import models
 from pathlib import Path
 from copy import deepcopy
+import torchxrayvision as xrv
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# For WILDS datasets: rxrx1, iwildcam, fmow
+# Returns (model, featurizer, classifier)
 def create_model(dataset_name, checkpoint_path=None):
     if dataset_name == "rxrx1":
         num_classes = 1139
@@ -31,6 +34,7 @@ def create_model(dataset_name, checkpoint_path=None):
         model.classifier = nn.Linear(feature_dim, num_classes)
         classifier_attr = 'classifier'
 
+    # elif dataset_name == "globalwheat":
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}. Choose 'rxrx1' or 'camelyon17'")
 
@@ -64,14 +68,45 @@ def create_model(dataset_name, checkpoint_path=None):
     print(f"[INFO] Created {dataset_name} model | feature_dim={feature_dim} | num_classes={num_classes}")
     return model, featurizer, classifier
 
-# class DenseNetFeaturizer(torch.nn.Module):
-#     def __init__(self, base):
-#         super().__init__()
-#         self.features = base.features
-#         self.pool = torch.nn.AdaptiveAvgPool2d((1, 1))
-#         self.d_out = 1024
-#     def forward(self, x):
-#         x = self.features(x)
-#         x = self.pool(x)
+
+class DenseNetFeaturizer(torch.nn.Module):
+    def __init__(self, base):
+        super().__init__()
+        self.features = base.features
+        self.pool = torch.nn.AdaptiveAvgPool2d((1, 1))
+        self.d_out = 1024
+    def forward(self, x):
+        x = self.features(x)
+        x = self.pool(x)
+        x = torch.flatten(x, 1)
+        return x
 
 
+def get_nih_model(weights="densenet121-res224-nih"):
+    base_model = xrv.models.DenseNet(weights=weights)
+
+    valid_indices = [i for i, name in enumerate(base_model.pathologies) if name.strip() != ""]
+    valid_pathologies = [base_model.pathologies[i] for i in valid_indices]
+    num_classes = len(valid_pathologies)
+
+    featurizer = DenseNetFeaturizer(base_model)
+    classifier = nn.Linear(featurizer.d_out, num_classes)
+
+    if hasattr(base_model, 'classifier'):
+        classifier.weight.data = base_model.classifier.weight.data.clone()
+        classifier.bias.data = base_model.classifier.bias.data.clone()
+
+    print(f"[INFO] Model: {weights}")
+    print(f"[INFO] Number of classes: {num_classes}")
+    print(f"[INFO] Pathologies: {valid_pathologies}")
+
+    return featurizer, classifier, valid_pathologies
+
+
+# model = xrv.models.DenseNet(weights="densenet121-res224-all")
+# model = xrv.models.DenseNet(weights="densenet121-res224-rsna") # RSNA Pneumonia Challenge
+# model = xrv.models.DenseNet(weights="densenet121-res224-nih") # NIH chest X-ray8
+# model = xrv.models.DenseNet(weights="densenet121-res224-pc") # PadChest (University of Alicante)
+# model = xrv.models.DenseNet(weights="densenet121-res224-chex") # CheXpert (Stanford)
+# model = xrv.models.DenseNet(weights="densenet121-res224-mimic_nb") # MIMIC-CXR (MIT)
+# model = xrv.models.DenseNet(weights="densenet121-res224-mimic_ch") # MIMIC-CXR (MIT)

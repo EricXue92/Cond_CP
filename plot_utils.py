@@ -90,24 +90,31 @@ def plot_loss_curves(results, save_dir="Figures", filename="learning_curve.pdf")
     print(f"Learning curves saved to: {save_path}")
     plt.close()  # Changed from plt.show() to plt.close() to avoid blocking
 
-def plot_miscoverage(main_group, additional_group,
+def plot_miscoverage(main_group, additional_groups,
                      target_miscoverage, save_dir,
                      save_name):
 
-    df_main_group = pd.read_csv(main_group).dropna()
-    df_additional_group = pd.read_csv(additional_group).dropna()
+    if isinstance(additional_groups, str):
+        additional_groups = [additional_groups]
+
+    df_main = pd.read_csv(main_group).dropna()
+    df_additional = [pd.read_csv(path).dropna() for path in additional_groups]
+    # df_additional_group = pd.read_csv(additional_groups).dropna()
 
     # Add miscoverage column
-    df_main_group['Miscoverage'] = 1 - df_main_group['Coverage']
-    df_additional_group['Miscoverage'] = 1 - df_additional_group['Coverage']
+    df_main['Miscoverage'] = 1 - df_main['Coverage']
+    for df in df_additional:
+        df['Miscoverage'] = 1 - df['Coverage']
 
-    # Columns we do NOT want as x-axis
     standard_cols = {'Type', 'Coverage', 'SampleSize', 'error', 'Miscoverage'}
 
-    main_group_col = [c for c in df_main_group.columns if c not in standard_cols][0]
-    additional_group_col = [c for c in df_additional_group.columns if c not in standard_cols][0]
+    main_col = [c for c in df_main.columns if c not in standard_cols][0]
+    additional_cols = []
 
-    # ---- Fix ordering of categorical bins ----
+    for df in df_additional:
+        col = [c for c in df.columns if c not in standard_cols][0]
+        additional_cols.append(col)
+
     def order_bins(df, col):
         df[col] = df[col].astype(str)
         bin_labels = [x for x in df[col].unique() if x != "Marginal"]
@@ -122,37 +129,53 @@ def plot_miscoverage(main_group, additional_group,
         df[col] = pd.Categorical(df[col], categories=ordered_labels, ordered=True)
         return df
 
-    df_main_group = order_bins(df_main_group, main_group_col)
-    df_additional_group = order_bins(df_additional_group, additional_group_col)
+    df_main = order_bins(df_main, main_col)
+    for i in range(len(df_additional)):
+        df_additional[i] = order_bins(df_additional[i], additional_cols[i])
 
-    # ---- Plot ----
+    n_additional = len(additional_groups)
+    n_plots = n_additional + 1
+
     sns.set_theme(style="white", context="notebook", font_scale=2)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20.7, 8.27), sharey=True)
+    fig_width = 10 * n_plots
+    fig, axes = plt.subplots(1, n_plots, figsize=(fig_width, 8.27), sharey=True)
 
-    sns.barplot(data=df_additional_group, x=additional_group_col, y='Miscoverage', hue='Type', ax=ax1)
-    ax1.axhline(target_miscoverage, color='red', linestyle='--', alpha=0.7)
-    if 'error' in df_additional_group.columns:
-        add_error_bars_to_plot(ax1, df_additional_group)
-    ax1.legend().remove()
-    ax1.set_xlabel(additional_group_col)
+    # Ensure axes is iterable
+    if n_plots == 1:
+        axes = [axes]
 
-    sns.barplot(data=df_main_group, x=main_group_col, y='Miscoverage', hue='Type', ax=ax2)
-    ax2.axhline(target_miscoverage, color='red', linestyle='--', alpha=0.7)
+    # Plot additional groups
+    for idx, (df, col) in enumerate(zip(df_additional, additional_cols)):
+        ax = axes[idx]
+        sns.barplot(data=df, x=col, y='Miscoverage', hue='Type', ax=ax)
+        ax.axhline(target_miscoverage, color='red', linestyle='--', alpha=0.7)
 
-    if 'error' in df_main_group.columns:
-        add_error_bars_to_plot(ax2, df_main_group)
-    ax2.tick_params(axis='x', labelsize=14, rotation=45)  # rotate labels for readability
-    ax2.legend(title='', loc='upper center')
-    ax2.set_xlabel(main_group_col)
+        if 'error' in df.columns:
+            add_error_bars_to_plot(ax, df)
+
+        ax.legend().remove()
+        ax.set_xlabel(col.replace('_', ' ').title())
+        ax.tick_params(axis='x', labelsize=14, rotation=45)
+
+    ax_main = axes[-1]
+    sns.barplot(data=df_main, x=main_col, y='Miscoverage', hue='Type', ax=ax_main)
+    ax_main.axhline(target_miscoverage, color='red', linestyle='--', alpha=0.7)
+
+    if 'error' in df_main.columns:
+        add_error_bars_to_plot(ax_main, df_main)
+
+    ax_main.tick_params(axis='x', labelsize=14, rotation=45)
+    ax_main.legend(title='', loc='upper center')
+    ax_main.set_xlabel(main_col.replace('_', ' ').title())
 
     plt.tight_layout()
-
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, f"{save_name}.pdf")
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
-    print(f"Plot saved: {save_path}")
+    print(f"[SAVED] {save_path}")
     plt.show()
-    return fig, (ax1, ax2)
+    return fig, axes
+
 
 def add_error_bars_to_plot(ax, df):
     patches = ax.patches

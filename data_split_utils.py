@@ -73,8 +73,6 @@ def get_metadata_splits(metadata: pd.DataFrame, data: dict):
         test_meta  = metadata.iloc[n_tr + n_ca:n_tr + n_ca + n_te]
     return train_meta, calib_meta, test_meta
 
-
-
 def load_split_dataset(dataset_name):
     cfg = DATASET_CONFIG.get(dataset_name)
     if not cfg:

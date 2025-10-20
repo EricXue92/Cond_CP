@@ -1,209 +1,106 @@
 import numpy as np
 import os
-from pathlib import Path
 import joblib
+import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
-from sklearn.metrics import make_scorer, log_loss
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import StratifiedKFold, train_test_split, PredefinedSplit
+from sklearn.model_selection import learning_curve, validation_curve
+from sklearn.utils import class_weight
 
 from utils import set_seed
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import log_loss, accuracy_score
+from sklearn.calibration import calibration_curve
+
 set_seed(42)
 
-#
-# def find_best_regularization(X, y, numCs=30, minC=1e-4, maxC=10.0, cv_folds=5):
-#
-#     x_np = X.detach().cpu().numpy() if hasattr(X, "detach") else np.asarray(X)
-#     y_np = y.cpu().numpy() if hasattr(y, "cpu") else np.asarray(y)
-#
-#     Cs = np.logspace(np.log10(minC), np.log10(maxC), numCs)
-#     unique, counts = np.unique(y_np, return_counts=True)
-#     imbalanced = (counts.min() / counts.max()) < 0.3
-#
-#     print(f"\n[INFO] Searching {numCs} values from C={minC} to C={maxC}")
-#     print(f"[INFO] Classes: {len(unique)}, Samples: {len(y_np)}")
-#     if imbalanced:
-#         print(f"[INFO] Class imbalance detected → using balanced weights")
-#
-#     # Drop ultra-rare classes
-#     original_size = len(y_np)
-#     rare_classes = unique[counts < 2]
-#     if len(rare_classes) > 0:
-#         mask = ~np.isin(y_np, rare_classes)
-#         x_np, y_np = x_np[mask], y_np[mask]
-#         unique, counts = np.unique(y_np, return_counts=True)
-#         dropped = original_size - len(y_np)
-#         print(
-#             f"[WARN] Dropped {len(rare_classes)} rare classes ({dropped} samples, {dropped / original_size * 100:.1f}%)")
-#         print(f"[INFO] Remaining: {len(unique)} classes, {len(y_np)} samples")
-#
-#     all_classes = unique
-#
-#     # Custom scorer - add **kwargs to absorb extra parameters
-#     def custom_log_loss(y_true, y_pred, **kwargs):
-#         return log_loss(y_true, y_pred, labels=all_classes)
-#
-#     scorer = make_scorer(custom_log_loss, needs_proba=True, greater_is_better=False)
-#
-#     # Determine CV strategy
-#     min_count = counts.min()
-#     adjusted_cv_folds = min(cv_folds, min_count)
-#
-#     if adjusted_cv_folds < 2:
-#         print(f"[INFO] Min class size={min_count} → using train/val split instead of CV")
-#         indices = np.arange(len(y_np))
-#         train_idx, val_idx = train_test_split(
-#             indices, test_size=0.2, stratify=None, random_state=42
-#         )
-#         test_fold = np.full(len(y_np), -1, dtype=int)
-#         test_fold[val_idx] = 0
-#         cv_strategy = PredefinedSplit(test_fold)
-#     else:
-#         if adjusted_cv_folds < cv_folds:
-#             print(f"[INFO] Adjusting CV folds from {cv_folds} to {adjusted_cv_folds}")
-#         cv_strategy = StratifiedKFold(n_splits=adjusted_cv_folds, shuffle=True, random_state=42)
-#
-#     try:
-#         model = LogisticRegressionCV(
-#             Cs=Cs,
-#             cv=cv_strategy,
-#             solver="lbfgs",
-#             max_iter=5000,
-#             scoring=scorer,
-#             class_weight='balanced' if imbalanced else None,
-#             random_state=42,
-#             n_jobs=-1
-#         )
-#         model.fit(x_np, y_np)
-#         best_c = model.C_[0]
-#         print(f"[INFO] Best C: {best_c:.4f}")
-#         return best_c
-#
-#     except (ValueError, TypeError) as e:
-#         print(f"[WARN] LogisticRegressionCV failed: {e}")
-#         print("[INFO] Falling back to C=1.0")
-#         return 1.0
-
-
-def find_best_regularization(X, y, numCs=30, minC=1e-4, maxC=10.0, cv_folds=5):
+def find_best_regularization(
+        X, y, numCs=20, minC=1e-4, maxC=10.0, cv=5, verbose=True):
     x_np = X.detach().cpu().numpy() if hasattr(X, "detach") else np.asarray(X)
     y_np = y.cpu().numpy() if hasattr(y, "cpu") else np.asarray(y)
-    Cs = np.logspace(np.log10(minC), np.log10(maxC), numCs)  # log scale is standard
+
     unique, counts = np.unique(y_np, return_counts=True)
-    imbalanced = (counts.min() / counts.max()) < 0.3
-    print(f"\n[INFO] Searching {numCs} values from C={minC} to C={maxC}")
-    print(f"[INFO] Classes: {len(unique)}, Samples: {len(y_np)}")
-    if imbalanced:
-        print(f"[INFO] Class imbalance detected → using balanced weights")
+    ratio = counts.min() / counts.max()
+    class_weight = "balanced" if ratio < 0.5 else None
+    if verbose and ratio < 0.5:
+        print(f"[INFO] Imbalance detected (ratio={ratio:.3f}), using balanced weights")
+
+    Cs = np.logspace(np.log10(minC), np.log10(maxC), numCs)
+
     model = LogisticRegressionCV(
         Cs=Cs,
-        cv=cv_folds,
+        cv=cv,
+        scoring="neg_log_loss",
         solver="lbfgs",
-        max_iter=5000,
-        scoring="neg_log_loss", # Best for probability calibration
-        class_weight='balanced' if imbalanced else None,
+        penalty="l2",
+        multi_class="multinomial",
+        max_iter=10000,
+        class_weight=class_weight,
         random_state=42,
-        n_jobs=-1
+        n_jobs=-1,
+        refit=True,
     )
     model.fit(x_np, y_np)
-    best_c = model.C_[0]
-    print(f"[INFO] Best C: {best_c:.4f}")
-    return best_c
+    best_C = float(np.mean(model.C_))
+    mean_loss = -np.mean([s.mean(axis=0) for s in model.scores_.values()])
+    print(f"[INFO] Probability-calibrated CV complete.")
+    print(f"       Best C = {best_C:.6f}")
+    print(f"       Mean CV Log-Loss = {mean_loss:.6f} (lower = better)")
+    return best_C, Cs
 
 
-def computeFeatures_probs(x_train, x_cal, x_test, y_train, best_c=None,
-                    save_path=None, dataset_name=None):
+def computeFeatures_probs(x_train, x_cal, x_test, y_train, C=None,
+                          verbose=True, **cv_params):
     def to_numpy(x):
         return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
+
     x_train, x_cal, x_test = map(to_numpy, [x_train, x_cal, x_test])
     y_train = np.asarray(y_train)
 
-    if save_path and os.path.exists(save_path):
-        print(f"[INFO] Loading existing model from {save_path}")
-        saved_data = joblib.load(save_path)
-        model = saved_data['model']
-
-        # Get probability features
-        features_cal = model.predict_proba(x_cal)
-        features_test = model.predict_proba(x_test)
-
-        print(f"[INFO] Features shape - Cal: {features_cal.shape}, Test: {features_test.shape}")
-        return features_cal, features_test
-
-    print("[INFO] Training new model...")
-
-    if best_c is None:
-        best_c = find_best_regularization(x_train, y_train)
+    if C is None:
+        C, _ = find_best_regularization(x_train, y_train, verbose=verbose, **cv_params)
 
     unique, counts = np.unique(y_train, return_counts=True)
-    imbalanced = (counts.min() / counts.max()) < 0.3
+    ratio = counts.min() / counts.max()
+    class_weight = "balanced" if ratio < 0.5 else None
+
+    if verbose:
+        print(f"[INFO] Training calibrated model with C={C:.6f}...")
 
     model = LogisticRegression(
-        C=best_c,
+        C=C,
         solver="lbfgs",
-        max_iter=5000,
-        class_weight='balanced' if imbalanced else None,
+        max_iter=10000,
+        multi_class="multinomial",
+        class_weight=class_weight,
         random_state=42,
-        n_jobs=-1
+        n_jobs=-1,
     )
 
     model.fit(x_train, y_train)
-    print("[INFO] Model training complete")
+
+    preds_train = model.predict(x_train)
+    probs_train = model.predict_proba(x_train)
+    acc = np.mean(preds_train == y_train)
+    logloss = log_loss(y_train, probs_train)
+    if verbose:
+        print(f"[INFO] Training Accuracy: {acc:.4f}")
+        print(f"[INFO] Training Log-Loss: {logloss:.6f} (lower = better)")
+        print(f"[INFO] Classes: {len(unique)} | Distribution: {dict(zip(unique, counts))}")
 
     features_cal = model.predict_proba(x_cal)
     features_test = model.predict_proba(x_test)
 
-    # Diagnostic metrics
-    train_acc = model.score(x_train, y_train)
-    train_preds = model.predict(x_train)
-    cal_preds = model.predict(x_cal)
-    test_preds = model.predict(x_test)
-
-    print(f"\n[RESULTS] Train Accuracy: {train_acc:.4f}")
-    print(f"[INFO] Prediction diversity:")
-    print(f"  Train: {len(np.unique(train_preds))}/{len(unique)} groups predicted")
-    print(f"  Cal:   {len(np.unique(cal_preds))}/{len(unique)} groups predicted")
-    print(f"  Test:  {len(np.unique(test_preds))}/{len(unique)} groups predicted")
-
-    # Check prediction confidence
-    max_probs_cal = features_cal.max(axis=1)
-    max_probs_test = features_test.max(axis=1)
-    print(f"[INFO] Average max probability:")
-    print(f"  Cal:  {max_probs_cal.mean():.3f} (std: {max_probs_cal.std():.3f})")
-    print(f"  Test: {max_probs_test.mean():.3f} (std: {max_probs_test.std():.3f})")
-
-    # # Print performance
-    # train_acc = model.score(x_train, y_train)
-    # print(f"\n[RESULTS] Train Accuracy: {train_acc:.4f}")
-    # print(f"[INFO] Features shape - Cal: {features_cal.shape}, Test: {features_test.shape}")
-
-    # Overfitting warning
-    if train_acc > 0.99:
-        print("[WARN] Perfect training accuracy - groups may be highly separable")
-        if max_probs_cal.mean() > 0.95:
-            print("[WARN] Very high prediction confidence - model may be overconfident")
-
-    print(f"[INFO] Features shape - Cal: {features_cal.shape}, Test: {features_test.shape}")
-
-
     return features_cal, features_test
 
 
-def computeFeatures_indicators(x_train, x_cal, x_test, y_train, best_c=None, normalize=True,
+
+def computeFeatures_indicators(x_train, x_cal, x_test, y_train, best_c=None,
                                save_path=None, dataset_name=None, include_probabilities=False):
     def to_numpy(x):
         return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
 
     x_train, x_cal, x_test = map(to_numpy, [x_train, x_cal, x_test])
     y_train = np.asarray(y_train)
-
-    scaler = None
-    if normalize:
-        scaler = StandardScaler()
-        x_train = scaler.fit_transform(x_train)
-        x_cal = scaler.transform(x_cal)
-        x_test = scaler.transform(x_test)
-        print("[INFO] Features normalized (StandardScaler)")
 
     if save_path and os.path.exists(save_path):
         print(f"[INFO] Loading existing logistic model from {save_path}")
@@ -221,15 +118,10 @@ def computeFeatures_indicators(x_train, x_cal, x_test, y_train, best_c=None, nor
             max_iter=5000,
             class_weight="balanced" if imbalanced else None,
             random_state=42,
-            n_jobs=-1,
-        )
+            n_jobs=-1,)
         model.fit(x_train, y_train)
         print(
             f"[INFO] Trained logistic model (C={best_c:.3g}) for indicator Φ | Train acc={model.score(x_train, y_train):.3f}")
-
-        # if save_path:
-        #     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        #     joblib.dump({"model": model, "scaler": scaler, "best_c": best_c}, save_path)
 
     pred_cal = model.predict(x_cal)
     pred_test = model.predict(x_test)
@@ -261,21 +153,13 @@ def computeFeatures_indicators(x_train, x_cal, x_test, y_train, best_c=None, nor
     return features_cal, features_test
 
 
-def computeFeatures_kernel(x_train, x_cal, x_test, y_train, best_c=None, normalize=True,
+def computeFeatures_kernel(x_train, x_cal, x_test, y_train, best_c=None,
                            kernel_gamma=4.0, lambda_reg=0.005, save_path=None, dataset_name=None):
     def to_numpy(x):
         return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
 
     x_train, x_cal, x_test = map(to_numpy, [x_train, x_cal, x_test])
     y_train = np.asarray(y_train)
-
-    scaler = None
-    if normalize:
-        scaler = StandardScaler()
-        x_train = scaler.fit_transform(x_train)
-        x_cal = scaler.transform(x_cal)
-        x_test = scaler.transform(x_test)
-        print("[INFO] Features normalized (StandardScaler)")
 
     if save_path and os.path.exists(save_path):
         print(f"[INFO] Loading saved kernel model from {save_path}")
@@ -287,9 +171,9 @@ def computeFeatures_kernel(x_train, x_cal, x_test, y_train, best_c=None, normali
         model.fit(x_train, y_train)
         print(f"[INFO] Logistic model fitted (C={best_c:.3g}) for kernel Φ")
 
-        if save_path:
-            Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-            joblib.dump({"model": model, "scaler": scaler}, save_path)
+        # if save_path:
+        #     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        #     joblib.dump({"model": model, "scaler": scaler}, save_path)
 
     num_groups = len(np.unique(y_train))
     representatives = []
@@ -315,4 +199,16 @@ def computeFeatures_kernel(x_train, x_cal, x_test, y_train, best_c=None, normali
 
 
 
+def plot_calibration_curve(y_true, y_prob, n_bins=10, title="Calibration Curve"):
+    prob_pos = y_prob[:, 1] if y_prob.shape[1] > 1 else y_prob
+    frac_pos, mean_pred = calibration_curve(y_true, prob_pos, n_bins=n_bins)
+    plt.figure(figsize=(5,5))
+    plt.plot(mean_pred, frac_pos, "s-", label="Model")
+    plt.plot([0,1], [0,1], "k--", label="Perfect")
+    plt.xlabel("Predicted probability")
+    plt.ylabel("Empirical frequency")
+    plt.title(title)
+    plt.legend(); plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    return plt.gcf()
 
