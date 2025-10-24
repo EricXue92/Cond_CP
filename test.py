@@ -205,7 +205,6 @@ def run_conditional_conformal(
 
     print(f"  Split conformal threshold: {q_split:.4f}")
     print(f"  Calibration scores: [{cal_scores.min():.4f}, {cal_scores.max():.4f}]")
-
     print(f"  Test scores: [{test_scores.min():.4f}, {test_scores.max():.4f}]")
 
     # Coverage with standard split conformal
