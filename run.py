@@ -18,8 +18,9 @@ from conditionalconformal.condconf import CondConf
 set_seed(42)
 
 DATASET_CONFIG = {"NIH": {"group_cols": ["age_group", "Patient Gender"] } ,}
-AGE_BINS   = [0, 18, 40, 60, 80, 100]
-AGE_LABELS = ["0-18", "18-40", "40-60", "60-80", "80-100"]
+AGE_BINS   = [0, 18, 40, 60, 100]
+# AGE_LABELS = ["0-18", "18-40", "40-60", "60-80", "80-100"]
+AGE_LABELS = ["0-18", "18-40", "40-60", "60-100"]
 
 def load_test_data(checkpoint_dir, dataset="NIH"):
     path = os.path.join(checkpoint_dir, f"test_data_{dataset}.pt")
@@ -42,7 +43,6 @@ def prepare_age_groups(metadata, col="Patient Age"):
         print(f"  {g:>7}: {c:6d} ({100 * c / len(md):5.1f}%)")
     return md
 
-
 def split_calib_test(logits, metadata, stratify_col="age_group"):
     stratify = pd.factorize(metadata[stratify_col])[0] if stratify_col in metadata.columns else None
     idx = np.arange(len(logits))
@@ -56,61 +56,53 @@ def filter_nonempty(labels, probs, metadata):
     return labels[mask], probs[mask], metadata.iloc[mask].reset_index(drop=True), mask
 
 def make_aps_score_fn(all_probs):
+
     def score_fn(x_idx, y_labels):
-        # Critical: flatten to handle CondConf's reshape(1, -1)
         x = np.atleast_1d(x_idx).astype(int).flatten()
         y = np.atleast_2d(y_labels)
-
         if y.shape[0] == 1 and len(x) > 1:
             y = np.repeat(y, len(x), axis=0)
         if y.shape[0] != len(x):
             raise ValueError(f"Shape mismatch: x={len(x)}, y={y.shape}")
-
         scores = np.zeros(len(x))
         for i, idx in enumerate(x):
             probs = all_probs[idx].ravel()
             positives = np.flatnonzero(y[i] > 0.5)
-
             if positives.size == 0:
                 scores[i] = 0.0
                 continue
-
-            # Sort by descending probability
             order = np.argsort(-probs, kind="stable")
             inv_ranks = np.empty_like(order)
             inv_ranks[order] = np.arange(len(probs))
-
-            # Sum probabilities up to worst-ranked positive label
             K = inv_ranks[positives].max() + 1
             scores[i] = probs[order[:K]].sum()
-
         return scores
 
     return score_fn
 
 
-def make_aps_score_inverse_fn(all_probs):
-    """
-    Inverse score function: given threshold, return prediction set.
-    Used for predict_naive() to generate actual prediction sets.
-    """
-
-    def score_inv_fn(threshold, x_index):
-        idx = int(x_index)
-        probs = all_probs[idx].ravel()
-        order = np.argsort(-probs, kind="stable")
-        cumsum = np.cumsum(probs[order])
-
-        # Find how many labels needed to reach threshold
-        k = int(np.searchsorted(cumsum, threshold, side="left")) + 1
-        k = min(max(k, 1), len(probs))
-
-        # Create multi-hot prediction set
-        prediction = np.zeros_like(probs, dtype=int)
-        prediction[order[:k]] = 1
-        return prediction
-
-    return score_inv_fn
+# def make_aps_score_inverse_fn(all_probs):
+#     """
+#     Inverse score function: given threshold, return prediction set.
+#     Used for predict_naive() to generate actual prediction sets.
+#     """
+#
+#     def score_inv_fn(threshold, x_index):
+#         idx = int(x_index)
+#         probs = all_probs[idx].ravel()
+#         order = np.argsort(-probs, kind="stable")
+#         cumsum = np.cumsum(probs[order])
+#
+#         # Find how many labels needed to reach threshold
+#         k = int(np.searchsorted(cumsum, threshold, side="left")) + 1
+#         k = min(max(k, 1), len(probs))
+#
+#         # Create multi-hot prediction set
+#         prediction = np.zeros_like(probs, dtype=int)
+#         prediction[order[:k]] = 1
+#         return prediction
+#
+#     return score_inv_fn
 
 
 # =============================================================================
@@ -146,11 +138,6 @@ def make_phi_fn(group_keys_all):
     print(f"[INFO] Groups: {len(unique)} unique combinations")
     return phi_fn
 
-
-# =============================================================================
-# Analysis & Reporting
-# =============================================================================
-
 def analyze_group_coverage(coverage_split, coverage_cond, metadata_test, group_cols, alpha):
     """Print coverage analysis by group."""
     print(f"\n{'=' * 70}")
@@ -161,7 +148,8 @@ def analyze_group_coverage(coverage_split, coverage_cond, metadata_test, group_c
 
     for group in sorted(np.unique(keys)):
         mask = keys == group
-        n = mask.sum()
+        n = int(np.sum(mask))
+
         split_cov = coverage_split[mask].mean()
         cond_cov = coverage_cond[mask].mean()
         gap = cond_cov - (1 - alpha)
@@ -182,7 +170,7 @@ def save_and_plot(coverage_split, coverage_cond, metadata_test, dataset_name, al
     # ---- Age group panel (ordered bins) ----
     if "age_group" in metadata_test.columns:
         # Enforce proper categorical order
-        order = ["0-18", "18-40", "40-60", "60-80", "80-100"]
+        order = ["0-18", "18-40", "40-60", "60-100"]
         metadata_test["age_group"] = pd.Categorical(metadata_test["age_group"], categories=order, ordered=True)
 
         df_age = build_cov_df(
@@ -257,18 +245,12 @@ def main():
     meta_cal = metadata.iloc[calib_idx].reset_index(drop=True)
     meta_test = metadata.iloc[test_idx].reset_index(drop=True)
 
-    # =========================================================================
-    # 3. Compute probabilities
-    # =========================================================================
     print("[INFO] Computing probabilities...")
     _, _, probs_cal, probs_test = compute_conformity_scores(
         logits[calib_idx], logits[test_idx],
         labels[calib_idx], labels[test_idx]
     )
 
-    # =========================================================================
-    # 4. Filter non-empty labels (critical for fixing coverage=1.0 issue)
-    # =========================================================================
     y_cal, probs_cal_filtered, meta_cal_filtered, cal_mask = filter_nonempty(
         labels[calib_idx], probs_cal, meta_cal
     )
@@ -280,12 +262,10 @@ def main():
     print(f"  Calibration: {len(y_cal)}/{len(cal_mask)} ({100 * len(y_cal) / len(cal_mask):.1f}%)")
     print(f"  Test:        {len(y_test)}/{len(test_mask)} ({100 * len(y_test) / len(test_mask):.1f}%)")
 
-    # =========================================================================
-    # 5. Create score and basis functions
-    # =========================================================================
+
     all_probs = np.vstack([probs_cal_filtered, probs_test_filtered])
     score_fn = make_aps_score_fn(all_probs)
-    score_inv_fn = make_aps_score_inverse_fn(all_probs)
+    # score_inv_fn = make_aps_score_inverse_fn(all_probs)
 
     group_keys_all = np.concatenate([
         composite_keys(meta_cal_filtered, group_cols),
@@ -293,9 +273,6 @@ def main():
     ])
     phi_fn = make_phi_fn(group_keys_all)
 
-    # =========================================================================
-    # 6. Compute conformity scores
-    # =========================================================================
     n_cal = len(probs_cal_filtered)
     x_cal = np.arange(n_cal)
     x_test = np.arange(n_cal, n_cal + len(probs_test_filtered))
@@ -303,9 +280,6 @@ def main():
     cal_scores = score_fn(x_cal, y_cal)
     test_scores = score_fn(x_test, y_test)
 
-    # =========================================================================
-    # 7. Split conformal (baseline)
-    # =========================================================================
     q_level = np.ceil((n_cal + 1) * (1 - args.alpha)) / n_cal
     q_split = np.quantile(cal_scores, q_level)
     coverage_split = (test_scores <= q_split).astype(float)
@@ -313,57 +287,27 @@ def main():
     print(f"[INFO] Split conformal: threshold={q_split:.4f}, "
           f"coverage={coverage_split.mean():.4f} (target={1 - args.alpha:.4f})")
 
-    # =========================================================================
-    # 8. Conditional conformal
-    # =========================================================================
     print("[INFO] Running conditional conformal...")
 
-    condconf = CondConf(
-        score_fn=score_fn,
-        Phi_fn=phi_fn,
-        quantile_fn=None,
-        infinite_params={}
-    )
-
+    condconf = CondConf(score_fn=score_fn,Phi_fn=phi_fn,quantile_fn=None,infinite_params={})
     condconf.setup_problem(x_calib=x_cal, y_calib=y_cal)
     coverage_cond = condconf.verify_coverage(x=x_test, y=y_test, quantile=args.alpha)
-
     print(f"[INFO] Conditional coverage: {coverage_cond.mean():.4f}")
 
-    # Check for issues
-    if coverage_cond.mean() > 0.98:
-        print("[WARNING] Coverage very high (>0.98). May indicate optimization issue.")
-    elif coverage_cond.mean() < 0.85:
-        print("[WARNING] Coverage low (<0.85). May need adjustment.")
+    # try:
+    #     example_idx = x_test[:5]
+    #     prediction_sets = condconf.predict_naive(
+    #         quantile=args.alpha,
+    #         x_array=example_idx,
+    #         score_inv_fn=score_inv_fn
+    #     )
+    #     print(f"[INFO] Generated {len(prediction_sets)} example prediction sets")
+    # except Exception as e:
+    #     print(f"[WARNING] predict_naive not available: {e}")
 
-    # =========================================================================
-    # 9. (Optional) Generate example prediction sets
-    # =========================================================================
-    try:
-        example_idx = x_test[:5]
-        prediction_sets = condconf.predict_naive(
-            quantile=args.alpha,
-            x_array=example_idx,
-            score_inv_fn=score_inv_fn
-        )
-        print(f"[INFO] Generated {len(prediction_sets)} example prediction sets")
-    except Exception as e:
-        print(f"[WARNING] predict_naive not available: {e}")
+    analyze_group_coverage(coverage_split, coverage_cond,meta_test_filtered, group_cols, args.alpha)
+    save_and_plot(coverage_split, coverage_cond, meta_test_filtered, args.dataset_name, args.alpha)
 
-    # =========================================================================
-    # 10. Report and save results
-    # =========================================================================
-    analyze_group_coverage(
-        coverage_split, coverage_cond,
-        meta_test_filtered, group_cols, args.alpha
-    )
-
-    save_and_plot(
-        coverage_split, coverage_cond,
-        meta_test_filtered, args.dataset_name, args.alpha
-    )
-
-    print("✓ Done\n")
 
 
 if __name__ == "__main__":
