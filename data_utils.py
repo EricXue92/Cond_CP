@@ -1,10 +1,12 @@
 import torch
 from wilds import get_dataset
-from torchvision import transforms
 from collections import Counter
 import pandas as pd
 import torchxrayvision as xrv
 import torchvision.transforms as transforms
+from torch.utils.data import Dataset
+from PIL import Image
+import os
 
 def load_dataset(dataset_name):
     if dataset_name == "rxrx1":
@@ -105,9 +107,6 @@ def load_iwildcam_data(root_dir="data", top_k_locations=8): # 48
 
     return test_data, test_metadata
 
-
-    return test_data, test_metadata
-
 def load_fmow_data(root_dir="data"):
     transform = create_iwildcam_transform()
     dataset = get_dataset(dataset="fmow", download=True, root_dir=root_dir)
@@ -176,7 +175,6 @@ def load_globalwheat_data(root_dir="data"):
         8: ('Netherlands', 'Western_Europe'),
         9: ('Sweden', 'Northern_Europe')
     }
-
     # Create location and region columns
     test_metadata['country'] = test_metadata['domain'].map(
         {k: v[0] for k, v in DOMAIN_INFO.items()}
@@ -185,30 +183,25 @@ def load_globalwheat_data(root_dir="data"):
     test_metadata['region'] = test_metadata['domain'].map(
         {k: v[1] for k, v in DOMAIN_INFO.items()}
     ).fillna('Unknown').astype('string')
-
     print(f"[INFO] Loaded GlobalWheat test set: {len(test_data)} samples")
     print(f"[INFO] Total domains: {test_metadata['domain'].nunique()}")
     print(f"[INFO] Locations: {test_metadata['location'].nunique()}")
     print(f"[INFO] Regions: {test_metadata['region'].nunique()}")
-
     # Location distribution (fine-grained)
     print(f"\n[INFO] Location Distribution (10 countries):")
     loc_counts = test_metadata['location'].value_counts().sort_index()
     total = loc_counts.sum()
     for loc, count in loc_counts.items():
         print(f"  {loc:<15}: {count:5d} samples ({100 * count / total:5.2f}%)")
-
     # Region distribution (coarse-grained)
     print(f"\n[INFO] Region Distribution (5 regions):")
     reg_counts = test_metadata['region'].value_counts().sort_index()
     for reg, count in reg_counts.items():
         print(f"  {reg:<20}: {count:5d} samples ({100 * count / total:5.2f}%)")
-
     # Cross-tabulation
     print(f"\n[INFO] Location-Region Mapping:")
     cross_tab = test_metadata.groupby(['region', 'location']).size().unstack(fill_value=0)
     print(cross_tab)
-
     return test_data, test_metadata
 
 def create_fmow_transform():
@@ -241,66 +234,153 @@ def create_rxrx1_transform():
         transforms.Lambda(standardize),
     ])
 
-
-def load_nih_data(root_dir="data"):
-    imgpath = f"{root_dir}/NIH/images"  # image folder
-    csvpath = f"{root_dir}/NIH/Data_Entry_2017_clean.csv"
-
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485], [0.229])  # grayscale normalization
-    ])
-
-    nih_dataset = xrv.datasets.NIH_Dataset(
-        imgpath=imgpath,
-        csvpath=csvpath,
-        views=["PA"],
-        transform=transform,
-        unique_patients=True
-    )
-
-    print("=" * 70)
-    print(f"[INFO] NIH Dataset Loaded: {len(nih_dataset)} samples")
-    print(f"[INFO] Labels (pathologies): {nih_dataset.pathologies}")
-    print(f"[INFO] CSV columns: {nih_dataset.csv.columns.tolist()}")
-    print("=" * 70)
-
-    # Print a few metadata entries
-    print("[INFO] Sample metadata rows:")
-    print(nih_dataset.csv.head(5))
-
-    # Count number of positive labels per pathology
-    label_counts = (nih_dataset.csv[nih_dataset.pathologies] > 0).sum().sort_values(ascending=False)
-    print("\n[INFO] Label distribution (number of positives per class):")
-    print(label_counts)
-
-    # Print age and gender info if available
-    if "Patient Age" in nih_dataset.csv.columns:
-        ages = pd.to_numeric(nih_dataset.csv["Patient Age"], errors="coerce").dropna()
-        print(f"\n[INFO] Patient age range: {ages.min()} - {ages.max()}")
-        age_bins = pd.cut(ages, bins=[0,20,40,60,80,100], right=False)
-        print("[INFO] Age group counts:")
-        print(age_bins.value_counts().sort_index())
-
-    if "Patient Gender" in nih_dataset.csv.columns:
-        genders = nih_dataset.csv["Patient Gender"].value_counts()
-        print("\n[INFO] Gender distribution:")
-        print(genders)
-
-    # Verify dataset __getitem__ output format
-    print("\n[INFO] Inspecting one sample:")
-    img, label = nih_dataset[0]
-    print(f"  Image tensor shape: {img.shape}")
-    print(f"  Label vector shape: {label.shape}")
-    print(f"  Label example: {label}")
-
-    return nih_dataset
-
-if __name__ == "__main__":
-    ds = load_nih_data()
+# def load_nih_data(root_dir="data/NIH"):
+#     imgpath = f"{root_dir}/images"  # image folder
+#     csvpath = f"{root_dir}/Data_Entry_2017_clean.csv"
+#
+#     transform = transforms.Compose([
+#         transforms.Resize((224, 224)),
+#         transforms.ToTensor(),
+#         transforms.Normalize([0.485], [0.229])  # grayscale normalization
+#     ])
+#
+#     nih_dataset = xrv.datasets.NIH_Dataset(
+#         imgpath=imgpath,
+#         csvpath=csvpath,
+#         views=["PA"],
+#         transform=transform,
+#         unique_patients=True
+#     )
+#
+#     print("=" * 70)
+#     print(f"[INFO] NIH Dataset Loaded: {len(nih_dataset)} samples")
+#     print(f"[INFO] Labels (pathologies): {nih_dataset.pathologies}")
+#     print(f"[INFO] CSV columns: {nih_dataset.csv.columns.tolist()}")
+#     print("=" * 70)
+#
+#     # Print a few metadata entries
+#     print("[INFO] Sample metadata rows:")
+#     print(nih_dataset.csv.head(5))
+#
+#     # Count number of positive labels per pathology
+#     label_counts = (nih_dataset.csv[nih_dataset.pathologies] > 0).sum().sort_values(ascending=False)
+#     print("\n[INFO] Label distribution (number of positives per class):")
+#     print(label_counts)
+#
+#     # Print age and gender info if available
+#     if "Patient Age" in nih_dataset.csv.columns:
+#         ages = pd.to_numeric(nih_dataset.csv["Patient Age"], errors="coerce").dropna()
+#         print(f"\n[INFO] Patient age range: {ages.min()} - {ages.max()}")
+#         age_bins = pd.cut(ages, bins=[0,20,40,60,80,100], right=False)
+#         print("[INFO] Age group counts:")
+#         print(age_bins.value_counts().sort_index())
+#
+#     if "Patient Gender" in nih_dataset.csv.columns:
+#         genders = nih_dataset.csv["Patient Gender"].value_counts()
+#         print("\n[INFO] Gender distribution:")
+#         print(genders)
+#
+#     # Verify dataset __getitem__ output format
+#     print("\n[INFO] Inspecting one sample:")
+#     img, label = nih_dataset[0]
+#     print(f"  Image tensor shape: {img.shape}")
+#     print(f"  Label vector shape: {label.shape}")
+#     print(f"  Label example: {label}")
+#
+#     return nih_dataset
 
 
+class NIHDataset(Dataset):
+    def __init__(self, csv_file, img_dir, indices, pathologies, transform=None):
+        self.df = csv_file.iloc[indices].reset_index(drop=True)
+        self.img_dir = img_dir
+        self.pathologies = pathologies
+        self.transform = transform
+    def __len__(self):
+        return len(self.df)
+    def __getitem__(self, idx):
+        img_name = self.df.iloc[idx]['Image Index']
+        img_path = os.path.join(self.img_dir, img_name)
+        image = Image.open(img_path).convert('RGB')
+        if self.transform:
+            image = self.transform(image)
+        finding_labels = self.df.iloc[idx]['Finding Labels']
+        labels = torch.zeros(len(self.pathologies))
+        if finding_labels != 'No Finding':
+            findings = finding_labels.split('|')
+            for i, pathology in enumerate(self.pathologies):
+                if pathology in findings:  # Exact match after split
+                    labels[i] = 1.0
+        return image, labels
 
+# if __name__ == "__main__":
+#     ds = load_nih_data()
+
+
+
+import torchxrayvision as xrv
+
+# Load full dataset
+dataset = xrv.datasets.NIH_Dataset(
+    imgpath="data/NIH/images",
+    csvpath="data/NIH/Data_Entry_2017_clean.csv",
+    unique_patients=True
+)
+
+# Manually keep only first image per patient
+unique_patient_indices = dataset.csv.groupby('Patient ID').head(1).index.tolist()
+unique_dataset = xrv.datasets.SubsetDataset(dataset, unique_patient_indices)
+
+print(f"Original: {len(dataset)} images")
+print(f"Unique patients: {len(unique_dataset)} images")
+
+
+
+
+# The unique patient counts should match!
+
+print(dataset.csv.columns)
+print(len(dataset))
+print(dataset.labels.shape) # (28868, 14)
+
+print(dataset.totals())
+print(len(dataset.pathologies))
+
+df = pd.read_csv("data/NIH/Data_Entry_2017_clean.csv")
+df = df[ df["Finding Labels"] != "No Finding" ]
+print(len(df))
+
+# Check unique patients in your filtered data
+print("Unique patients in full CSV:", df['Patient ID'].nunique())
+print("Total images with findings:", len(df))
+
+print("Unique patients in xrv dataset:", dataset.csv['Patient ID'].nunique())
+print("Total images in xrv dataset:", len(dataset))
+
+
+# # Method 1: Random split by indices
+# train_indices, test_indices = train_test_split(
+#     np.arange(len(dataset)),
+#     test_size=0.2,
+#     random_state=42
+# )
+# # Use SubsetDataset
+# train_dataset = xrv.datasets.SubsetDataset(dataset, train_indices)
+# test_dataset = xrv.datasets.SubsetDataset(dataset, test_indices)
+#
+# print(type(train_dataset))
+
+# Method 2: Split by patient IDs (recommended)
+# Get unique patient IDs and split them
+# patient_ids = dataset.csv['Patient ID'].unique()
+# train_patients, test_patients = train_test_split(
+#     patient_ids,
+#     test_size=0.2,
+#     random_state=42
+# )
+# # Create indices for each split
+# train_indices = dataset.csv[dataset.csv['Patient ID'].isin(train_patients)].index
+# test_indices = dataset.csv[dataset.csv['Patient ID'].isin(test_patients)].index
+#
 
 

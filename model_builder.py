@@ -4,6 +4,8 @@ from torchvision import models
 from pathlib import Path
 from copy import deepcopy
 import torchxrayvision as xrv
+from torchvision.models import densenet121, resnet50
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -82,25 +84,58 @@ class DenseNetFeaturizer(torch.nn.Module):
         return x
 
 
-def get_nih_model(weights="densenet121-res224-nih"):
-    base_model = xrv.models.DenseNet(weights=weights)
+# def get_nih_model(weights="densenet121-res224-nih"):
+#     base_model = xrv.models.DenseNet(weights=weights)
+#     # Filter empty pathologies
+#     valid_indices = [i for i, name in enumerate(base_model.targets)
+#                      if name.strip() != ""]
+#     print(base_model.targets)
+#     valid_pathologies = [base_model.targets[i] for i in valid_indices]
+#     num_classes = len(valid_pathologies)
+#     featurizer = DenseNetFeaturizer(base_model) # [batch, 1, 224, 224] → [batch, 1024]
+#     classifier = nn.Linear(featurizer.d_out, num_classes) # [batch, 1024] → [batch, 14]
+#
+#     # Copy weights - CRITICAL: must index if filtered
+#     if hasattr(base_model, 'classifier'):
+#         original_shape = base_model.classifier.weight.shape[0]
+#         if original_shape == num_classes:
+#             classifier.weight.data = base_model.classifier.weight.data.clone()
+#             classifier.bias.data = base_model.classifier.bias.data.clone()
+#             print(f"[INFO] Copied all {num_classes} pretrained weights")
+#         else:
+#             classifier.weight.data = base_model.classifier.weight.data[valid_indices].clone()
+#             classifier.bias.data = base_model.classifier.bias.data[valid_indices].clone()
+#             print(f"[INFO] Copied {num_classes}/{original_shape} pretrained weights (filtered)")
+#     else:
+#         print(f"[WARNING] No classifier found, using random initialization")
+#
+#     print(f"[INFO] Pathologies: {valid_pathologies}")
+#     return featurizer, classifier, valid_pathologies
 
-    valid_indices = [i for i, name in enumerate(base_model.pathologies) if name.strip() != ""]
-    valid_pathologies = [base_model.pathologies[i] for i in valid_indices]
-    num_classes = len(valid_pathologies)
 
-    featurizer = DenseNetFeaturizer(base_model)
-    classifier = nn.Linear(featurizer.d_out, num_classes)
+# def create_nih_model(num_classes=14):
+#     model = densenet121(weights="DEFAULT")
+#     model.features.conv0 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+#     num_features = model.classifier.in_features
+#     model.classifier = nn.Linear(num_features, num_classes)
+#     return model
 
-    if hasattr(base_model, 'classifier'):
-        classifier.weight.data = base_model.classifier.weight.data.clone()
-        classifier.bias.data = base_model.classifier.bias.data.clone()
+from torchvision.models import densenet121, resnet50
 
-    print(f"[INFO] Model: {weights}")
-    print(f"[INFO] Number of classes: {num_classes}")
-    print(f"[INFO] Pathologies: {valid_pathologies}")
+def create_medical_model(model_name='densenet121', num_classes=14):
+    if model_name == 'densenet121':
+        model = densenet121(weights='DEFAULT')
+        num_features = model.classifier.in_features
+        model.classifier = nn.Linear(num_features, num_classes)
 
-    return featurizer, classifier, valid_pathologies
+    elif model_name == 'resnet50':
+        model = models.resnet50(weights='DEFAULT')
+        num_features = model.fc.in_features
+        model.fc = nn.Linear(num_features, num_classes)
+    else:
+        raise ValueError(f"Unknown model: {model_name}. Choose 'densenet121' or 'resnet50'")
+
+    return model
 
 
 # model = xrv.models.DenseNet(weights="densenet121-res224-all")

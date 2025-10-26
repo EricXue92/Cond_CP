@@ -229,17 +229,17 @@ def main():
     # plot_size_hist_comparison("results/pred_sets_groups_groups.csv", figsize=(8, 6),
     #                           save_path="Figures/rxrx1_size_histogram_groups.pdf")
 
-    plot_miscoverage(main_group="results/iwildcam_location_grouped.csv", additional_group="results/iwildcam_time_of_day.csv",
+    plot_miscoverage("results/NIH_age_group.csv", "results/NIH_gender.csv",
                      target_miscoverage=0.1, save_dir="Figures",
-                     save_name="iwildcam_miscoverage")
+                     save_name="NIH_miscoverage_groups")
 
 
 
 
 
-    plot_size_hist_comparison("results/rxrx1_pred_sets.csv", figsize=(8, 6),
-                              save_path="Figures/rxrx1_size_histogram_groups.pdf")
-    pass
+    # plot_size_hist_comparison("results/rxrx1_pred_sets.csv", figsize=(8, 6),
+    #                           save_path="Figures/rxrx1_size_histogram_groups.pdf")
+    # pass
 
 if __name__ == "__main__":
     main()

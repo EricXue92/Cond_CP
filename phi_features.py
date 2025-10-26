@@ -9,7 +9,19 @@ from sklearn.calibration import calibration_curve
 
 set_seed(42)
 
-def find_best_regularization(X, y, num_candidates=20, minC=1e-4, maxC=10.0, cv_folds=5, verbose=True):
+# rxrx1  minC=1e-4, maxC=10
+# iwildcam  minC=1e-6, maxC=0.01   # ← Reduce from 10.0 to 1.0 (stronger regularization) for
+# fmow minC=1e-4, maxC=0.5
+
+
+# # Stage 1: Coarse search
+# minC = 1e-4, maxC = 10, n_points = 15
+# # Stage 2: Fine search around optimum
+# minC = best_C / 3, maxC = best_C * 3, n_points = 20
+
+# C = 0.143845
+
+def find_best_regularization(X, y, num_candidates=20, minC= 0.04, maxC = 0.5, cv_folds=5, verbose=True):
     x_np = X.detach().cpu().numpy() if hasattr(X, "detach") else np.asarray(X)
 
     if hasattr(y, "detach"):
@@ -43,6 +55,10 @@ def find_best_regularization(X, y, num_candidates=20, minC=1e-4, maxC=10.0, cv_f
     )
     model.fit(x_np, y_np)
     best_C = float(np.mean(model.C_))
+    train_acc = model.score(x_np, y_np)
+    if train_acc > 0.98 and verbose:
+        print(f"[WARNING] Training accuracy {train_acc:.4f} suggests overfitting!")
+        print(f"[WARNING] Consider using stronger regularization (lower C values)")
     mean_loss = -np.mean([s.mean(axis=0) for s in model.scores_.values()])
 
     if verbose:

@@ -1,6 +1,8 @@
 import os
 import argparse
 import pandas as pd
+import numpy as np
+
 from phi_features import (computeFeatures_probs, find_best_regularization,
                           computeFeatures_indicators, computeFeatures_kernel)
 
@@ -11,6 +13,7 @@ from feature_io import load_features
 from conformal_scores import compute_conformity_scores
 from conditional_coverage import compute_both_coverages, compute_prediction_sets
 from data_utils import load_dataset
+
 set_seed(42)
 
 DATASET_CONFIG = {
@@ -113,9 +116,17 @@ def create_feature_matrix(features, metadata, train_idx, calib_idx, test_idx,
     group_encoded = categorical_to_numeric(metadata, group_col)
     y_group_train = group_encoded[train_idx].astype(int)
 
+    # y_group_cal = group_encoded[calib_idx].astype(int)
+    # y_group_test = group_encoded[test_idx].astype(int)
+    #
     train_feature = features[train_idx]
     calib_feature = features[calib_idx]
     test_feature = features[test_idx]
+
+    # K = int( max( y_group_cal.max() , y_group_test.max() ) + 1)
+    # phi_cal_hard = np.eye(K)[y_group_cal]
+    # phi_test_hard = np.eye(K)[y_group_test]
+
 
     print(f"[INFO] Finding best regularization parameter...")
     best_c = find_best_regularization(train_feature, y_group_train)
@@ -143,10 +154,13 @@ def run_analysis(phi_cal, phi_test, cal_scores, test_scores,
     coverages_split, coverages_cond, q_split, cond_thresholds = compute_both_coverages(
         phi_cal, cal_scores, phi_test, test_scores, alpha
     )
+
     compute_prediction_sets(probs_test, q_split, cond_thresholds,
         "results",  f"{dataset_name}_pred_sets" )
+
     print(f"Split conformal - Mean: {coverages_split.mean():.4f}, Std: {coverages_split.std():.4f}")
     print(f"Conditional CP  - Mean: {coverages_cond.mean():.4f}, Std: {coverages_cond.std():.4f}")
+
     return coverages_split, coverages_cond
 
 def save_and_plot(coverages_split, coverages_cond, metadata, test_idx, dataset_name, alpha):
@@ -188,7 +202,7 @@ def save_and_plot(coverages_split, coverages_cond, metadata, test_idx, dataset_n
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Conditional Conformal Analysis')
     parser.add_argument("--alpha", type=float, default=0.1, help="Miscoverage level (default: 0.1)")
-    parser.add_argument("--dataset_name", default="rxrx1", choices=["rxrx1","iwildcam", "fmow"],help="Dataset to analyze")
+    parser.add_argument("--dataset_name", default="fmow", choices=["rxrx1","iwildcam", "fmow"],help="Dataset to analyze")
     parser.add_argument('--features_path', type=str, help="Custom path to features file")
     parser.add_argument("--method", default="probs", choices=["indicators", "kernel", "probs"], help="Method for computing features")
     args = parser.parse_args()

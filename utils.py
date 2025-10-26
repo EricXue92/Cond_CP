@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 import math, random
 import torch
+import matplotlib.pyplot as plt
 import os
 
 from sklearn.model_selection import train_test_split
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -77,5 +77,25 @@ def split_threshold(scores_cal, alpha):
     q_idx = math.ceil((n+1)*(1-alpha))/n
     return float(np.quantile(scores_cal, q_idx, method="higher"))
 
+
+def plot_loss_curves(train_losses, val_losses, checkpoint_dir, data_name):
+    plt.figure(figsize=(8, 5))
+    epochs = range(1, len(train_losses) + 1)
+
+    plt.plot(epochs, train_losses, label="Train Loss", marker='o')
+    plt.plot(epochs, val_losses, label="Validation Loss", marker='s')
+
+    plt.xlabel("Epoch", fontsize=12)
+    plt.ylabel("Loss", fontsize=12)
+    plt.title(f"Training and Validation Loss ({data_name})", fontsize=14)
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.6)
+    plt.tight_layout()
+
+    save_path = os.path.join(checkpoint_dir, f"loss_curve_{data_name}.png")
+    plt.savefig(save_path)
+    plt.show()
+
+    print(f"[INFO] Saved loss curve → {save_path}")
 
 
