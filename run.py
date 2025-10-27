@@ -263,7 +263,5 @@ def main():
     create_all_visualizations(coverage_split, coverage_cond, meta_test,
                               'age_group', 'Patient Gender', 1 - args.alpha, 'Figures')
 
-
-
 if __name__ == "__main__":
     main()

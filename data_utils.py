@@ -1,12 +1,14 @@
 import torch
 from wilds import get_dataset
 from collections import Counter
-import pandas as pd
-import torchxrayvision as xrv
+
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 from PIL import Image
 import os
+
+from torch.utils.data import DataLoader
+
 
 def load_dataset(dataset_name):
     if dataset_name == "rxrx1":
@@ -316,71 +318,68 @@ class NIHDataset(Dataset):
 # if __name__ == "__main__":
 #     ds = load_nih_data()
 
-
-
 import torchxrayvision as xrv
-
-# Load full dataset
-dataset = xrv.datasets.NIH_Dataset(
-    imgpath="data/NIH/images",
-    csvpath="data/NIH/Data_Entry_2017_clean.csv",
-    unique_patients=True
-)
-
-# Manually keep only first image per patient
-unique_patient_indices = dataset.csv.groupby('Patient ID').head(1).index.tolist()
-unique_dataset = xrv.datasets.SubsetDataset(dataset, unique_patient_indices)
-
-print(f"Original: {len(dataset)} images")
-print(f"Unique patients: {len(unique_dataset)} images")
+import torchvision.transforms as T
+import torch
+from torch.utils.data import DataLoader
+from sklearn.model_selection import train_test_split
 
 
+def create_loaders(csv_path="data/NIH/Data_Entry_2017_clean.csv",
+                   img_path="data/NIH/images",
+                   batch_size=128):
+    # 1. Define transforms
+    train_transform = T.Compose([
+        T.ToPILImage(),
+        T.RandomHorizontalFlip(p=0.5),
+        T.ToTensor(),
+        T.Lambda(lambda x: x.repeat(3, 1, 1)),  # 1 channel -> 3 channels
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
 
+    val_transform = T.Compose([
+        T.ToPILImage(),
+        T.ToTensor(),
+        T.Lambda(lambda x: x.repeat(3, 1, 1)),
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
 
-# The unique patient counts should match!
+    # 2. Load dataset
+    dataset = xrv.datasets.NIH_Dataset(imgpath=img_path, csvpath=csv_path, unique_patients=True)
 
-print(dataset.csv.columns)
-print(len(dataset))
-print(dataset.labels.shape) # (28868, 14)
+    # 3. Split by patient
+    patient_ids = dataset.csv['Patient ID'].unique()
+    train_ids, temp_ids = train_test_split(patient_ids, test_size=0.5, random_state=42)
+    val_ids, test_ids = train_test_split(temp_ids, test_size=0.8, random_state=42)
 
-print(dataset.totals())
-print(len(dataset.pathologies))
+    train_idx = dataset.csv[dataset.csv['Patient ID'].isin(train_ids)].index.tolist()
+    val_idx = dataset.csv[dataset.csv['Patient ID'].isin(val_ids)].index.tolist()
+    test_idx = dataset.csv[dataset.csv['Patient ID'].isin(test_ids)].index.tolist()
 
-df = pd.read_csv("data/NIH/Data_Entry_2017_clean.csv")
-df = df[ df["Finding Labels"] != "No Finding" ]
-print(len(df))
+    train_dataset = xrv.datasets.SubsetDataset(dataset, train_idx)
+    val_dataset = xrv.datasets.SubsetDataset(dataset, val_idx)
+    test_dataset = xrv.datasets.SubsetDataset(dataset, test_idx)
+    print(test_dataset.csv.columns)
 
-# Check unique patients in your filtered data
-print("Unique patients in full CSV:", df['Patient ID'].nunique())
-print("Total images with findings:", len(df))
+    # 4. Collate functions with transforms
+    def train_collate(batch):
+        images = [train_transform(item['img'].squeeze(0)) for item in batch]
+        labels = [torch.from_numpy(item['lab']).float() for item in batch]
+        return torch.stack(images), torch.stack(labels)
 
-print("Unique patients in xrv dataset:", dataset.csv['Patient ID'].nunique())
-print("Total images in xrv dataset:", len(dataset))
+    def val_collate(batch):
+        images = [val_transform(item['img'].squeeze(0)) for item in batch]
+        labels = [torch.from_numpy(item['lab']).float() for item in batch]
+        return torch.stack(images), torch.stack(labels)
 
+    # 5. Create loaders
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                              num_workers=4, collate_fn=train_collate)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
+                            num_workers=4, collate_fn=val_collate)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+                             num_workers=4, collate_fn=val_collate)
 
-# # Method 1: Random split by indices
-# train_indices, test_indices = train_test_split(
-#     np.arange(len(dataset)),
-#     test_size=0.2,
-#     random_state=42
-# )
-# # Use SubsetDataset
-# train_dataset = xrv.datasets.SubsetDataset(dataset, train_indices)
-# test_dataset = xrv.datasets.SubsetDataset(dataset, test_indices)
-#
-# print(type(train_dataset))
-
-# Method 2: Split by patient IDs (recommended)
-# Get unique patient IDs and split them
-# patient_ids = dataset.csv['Patient ID'].unique()
-# train_patients, test_patients = train_test_split(
-#     patient_ids,
-#     test_size=0.2,
-#     random_state=42
-# )
-# # Create indices for each split
-# train_indices = dataset.csv[dataset.csv['Patient ID'].isin(train_patients)].index
-# test_indices = dataset.csv[dataset.csv['Patient ID'].isin(test_patients)].index
-#
+    return train_loader, val_loader, test_loader, test_dataset.csv
 
 

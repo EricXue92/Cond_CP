@@ -122,11 +122,17 @@ class DenseNetFeaturizer(torch.nn.Module):
 
 from torchvision.models import densenet121, resnet50
 
-def create_medical_model(model_name='densenet121', num_classes=14):
+def create_medical_model(model_name='densenet121', num_classes=14, dropout=0.2):
     if model_name == 'densenet121':
         model = densenet121(weights='DEFAULT')
         num_features = model.classifier.in_features
-        model.classifier = nn.Linear(num_features, num_classes)
+
+        model.classifier = nn.Sequential(
+            nn.Dropout(p=dropout),  # ← ADD THIS
+            nn.Linear(num_features, num_classes)
+        )
+
+        # model.classifier = nn.Linear(num_features, num_classes)
 
     elif model_name == 'resnet50':
         model = models.resnet50(weights='DEFAULT')
